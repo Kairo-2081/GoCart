@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GoCart - A Scalable, Multi-Vendor E-Commerce Marketplace</title>
+    <script>
+      (function() {
+        function isViteWsError(err) {
+          if (!err) return false;
+          var msg = String(err.message || err.reason || err || '');
+          return msg.indexOf('WebSocket') !== -1 || msg.indexOf('vite') !== -1 || msg.indexOf('ws://') !== -1 || msg.indexOf('wss://') !== -1;
+        }
+        window.addEventListener('unhandledrejection', function(e) {
+          if (isViteWsError(e.reason) || isViteWsError(e)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+        window.addEventListener('error', function(e) {
+          if (isViteWsError(e.error) || isViteWsError(e.message)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
