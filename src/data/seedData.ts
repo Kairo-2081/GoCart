@@ -1,4 +1,4 @@
-import { Category, Customer, Admin, Seller, Product, Review, Order } from '../types';
+import { Category, Customer, Admin, Seller, Product, Review, Order } from '../types.ts';
 
 export const initialCategories: Category[] = [
   { Category_ID: 'CAT-1', Name: 'Electronics & Gadgets' },
@@ -10,15 +10,17 @@ export const initialCategories: Category[] = [
 export const initialSellers: Seller[] = [
   {
     Seller_ID: 'SEL-1',
-    Name: 'Aura Tech Solutions',
-    Email: 'contact@auratech.io',
-    Number: '+1 (555) 901-2345',
+    Username: 'startech',
+    Name: 'Star Tech Solutions',
+    Email: 'contact@startech.io',
+    Password: 'seller123',
+    Number: '+8801790-124345',
     Address: {
-      Street: '88 Innovation Way',
+      Street: '88 Green Way',
       House_Name: 'Suite 400',
-      City: 'Austin',
-      Postal_Code: '78701',
-      Additional_Info: 'Building B, Loading Dock 2'
+      City: 'Dhaka',
+      Postal_Code: '7871',
+      Additional_Info: 'Building B, Dock 2'
     },
     Logo: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&auto=format&fit=crop&q=80',
     Description: 'Pioneering cutting-edge audio, wearables, and personal computing hardware with premium warranties.',
@@ -27,14 +29,16 @@ export const initialSellers: Seller[] = [
   },
   {
     Seller_ID: 'SEL-2',
+    Username: 'artisanhome',
     Name: 'Artisan Home Krafts',
     Email: 'hello@artisanhome.com',
-    Number: '+1 (555) 890-1234',
+    Password: 'seller123',
+    Number: '+8801891-124345',
     Address: {
-      Street: '42 Craftsman Blvd',
+      Street: '42 Craftsman Bhaban',
       House_Name: 'Studio 12',
-      City: 'Portland',
-      Postal_Code: '97201',
+      City: 'Bhola',
+      Postal_Code: '9701',
       Additional_Info: 'West Entrance'
     },
     Logo: 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=200&auto=format&fit=crop&q=80',
@@ -44,15 +48,17 @@ export const initialSellers: Seller[] = [
   },
   {
     Seller_ID: 'SEL-3',
+    Username: 'urbanthread',
     Name: 'Urban Thread Studio',
     Email: 'info@urbanthread.co',
-    Number: '+1 (555) 789-0123',
+    Password: 'seller123',
+    Number: '+8801841-124345',
     Address: {
-      Street: '105 Garment Alley',
+      Street: '105 Sarobar',
       House_Name: 'Loft 3A',
-      City: 'Brooklyn',
-      Postal_Code: '11201',
-      Additional_Info: 'Freight elevator access'
+      City: 'Dhaka',
+      Postal_Code: '7201',
+      Additional_Info: 'Elevator access'
     },
     Logo: 'https://images.unsplash.com/photo-1529374255404-311a2a4f1fd9?w=200&auto=format&fit=crop&q=80',
     Description: 'Ethically manufactured organic apparel designed for urban active lifestyles.',
@@ -64,40 +70,46 @@ export const initialSellers: Seller[] = [
 export const initialCustomers: Customer[] = [
   {
     Customer_ID: 'CUST-1',
-    Name: 'Alice Smith',
-    Email: 'alice@example.com',
-    Number: '+1 (555) 234-5678',
+    Username: 'kairo',
+    Name: 'Kairo',
+    Email: 'kairo21@gmail.com',
+    Password: 'password123',
+    Number: '+8801756-840340',
     Address: {
       Street: '742 Evergreen Terrace',
       House_Name: 'Apt 4B',
-      City: 'Springfield',
-      Postal_Code: '97477',
+      City: 'Barishal',
+      Postal_Code: '9777',
       Additional_Info: 'Leave package at front porch'
     }
   },
   {
     Customer_ID: 'CUST-2',
-    Name: 'Bob Johnson',
-    Email: 'bob@example.com',
-    Number: '+1 (555) 876-5432',
+    Username: 'abir',
+    Name: 'Ahmad Taquie Abir',
+    Email: 'abir@gmail.com',
+    Password: 'password123',
+    Number: '+8801576-455432',
     Address: {
       Street: '123 Maple Street',
       House_Name: 'Unit 12',
-      City: 'Seattle',
-      Postal_Code: '98101',
+      City: 'Bogra',
+      Postal_Code: '8101',
       Additional_Info: 'Ring doorbell on arrival'
     }
   },
   {
     Customer_ID: 'CUST-3',
-    Name: 'Carol White',
-    Email: 'carol@example.com',
-    Number: '+1 (555) 345-6789',
+    Username: 'mayel',
+    Name: 'Raian Rashid Mayel',
+    Email: 'raianrashidmayel@gmail.com',
+    Password: 'password123',
+    Number: '+8801734-674789',
     Address: {
-      Street: '456 Oak Avenue',
+      Street: '456 Bak Avenue',
       House_Name: 'Suite 300',
-      City: 'San Francisco',
-      Postal_Code: '94107',
+      City: 'Bhola',
+      Postal_Code: '4107',
       Additional_Info: 'Call upon arrival'
     }
   }
@@ -105,15 +117,17 @@ export const initialCustomers: Customer[] = [
 
 export const initialAdmin: Admin = {
   Admin_ID: 'ADM-1',
-  Name: 'Sarah Jenkins (Admin)',
-  Email: 'admin@marketplace.com',
-  Number: '+1 (800) 555-0199',
+  Username: 'admin',
+  Name: 'Fahim Shahriar (Admin)',
+  Email: 'admin@gocart.com',
+  Password: 'admin123',
+  Number: '+88017555-01949',
   Address: {
     Street: '1 Marketplace Way',
     House_Name: 'HQ Tower Floor 15',
-    City: 'San Jose',
-    Postal_Code: '95113',
-    Additional_Info: 'Marketplace Operations Center'
+    City: 'Dhaka',
+    Postal_Code: '9513',
+    Additional_Info: 'GoCart Operations Center'
   }
 };
 
@@ -123,7 +137,7 @@ export const initialProducts: Product[] = [
     Name: 'Wireless Noise-Canceling Headphones',
     Image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&auto=format&fit=crop&q=80',
     Description: 'High-fidelity audio with active noise cancellation, custom EQ mode, and up to 40 hours of continuous battery playback.',
-    Price: 199.99,
+    Price: 99.99,
     Voucher: 'SAVE20',
     Stock: 25,
     Product_Status: 'active',
@@ -200,7 +214,7 @@ export const initialReviews: Review[] = [
     Review_ID: 'REV-1',
     Product_ID: 'PROD-1',
     Customer_ID: 'CUST-1',
-    Customer_Name: 'Alice Smith',
+    Customer_Name: 'Kairo',
     Rating: 5,
     Review_text: 'Outstanding noise cancellation! I wore these on a 10-hour flight and forgot I was on a plane. Battery life easily exceeded expectations.',
     Created_At: '2026-07-28T14:32:00.000Z'
@@ -209,7 +223,7 @@ export const initialReviews: Review[] = [
     Review_ID: 'REV-2',
     Product_ID: 'PROD-1',
     Customer_ID: 'CUST-2',
-    Customer_Name: 'Bob Johnson',
+    Customer_Name: 'Ahmad Taquie Abir',
     Rating: 4,
     Review_text: 'Crisp high frequencies and smooth bass response. The ear cups fit tightly without pressing too hard on glasses.',
     Created_At: '2026-07-30T09:15:00.000Z'
@@ -218,7 +232,7 @@ export const initialReviews: Review[] = [
     Review_ID: 'REV-3',
     Product_ID: 'PROD-4',
     Customer_ID: 'CUST-3',
-    Customer_Name: 'Carol White',
+    Customer_Name: 'Raian Rashid Mayel',
     Rating: 5,
     Review_text: 'Gorgeous ceramic texture and brews a clean, aromatic cup of coffee every morning. Packaging was eco-friendly and sturdy.',
     Created_At: '2026-07-31T18:40:00.000Z'
@@ -227,7 +241,7 @@ export const initialReviews: Review[] = [
     Review_ID: 'REV-4',
     Product_ID: 'PROD-2',
     Customer_ID: 'CUST-1',
-    Customer_Name: 'Alice Smith',
+    Customer_Name: 'Kairo',
     Rating: 5,
     Review_text: 'The health sensor accuracy and vibrant screen make this worth every penny. Syncs seamlessly with all my fitness apps!',
     Created_At: '2026-08-01T11:20:00.000Z'
@@ -255,15 +269,15 @@ export const initialOrders: Order[] = [
     Shipping_Address: {
       Street: '742 Evergreen Terrace',
       House_Name: 'Apt 4B',
-      City: 'Springfield',
-      Postal_Code: '97477',
+      City: 'Barishal',
+      Postal_Code: '9777',
       Additional_Info: 'Leave package at front porch'
     },
     Billing_Address: {
       Street: '742 Evergreen Terrace',
       House_Name: 'Apt 4B',
-      City: 'Springfield',
-      Postal_Code: '97477'
+      City: 'Barishal',
+      Postal_Code: '9777'
     },
     Order_Placed_At: '2026-07-28T14:30:00.000Z',
     Additional_Info: 'Standard delivery via Express Freight.'
@@ -288,15 +302,15 @@ export const initialOrders: Order[] = [
     Shipping_Address: {
       Street: '123 Maple Street',
       House_Name: 'Unit 12',
-      City: 'Seattle',
-      Postal_Code: '98101',
+      City: 'Bogra',
+      Postal_Code: '8101',
       Additional_Info: 'Ring doorbell on arrival'
     },
     Billing_Address: {
       Street: '123 Maple Street',
       House_Name: 'Unit 12',
-      City: 'Seattle',
-      Postal_Code: '98101'
+      City: 'Bogra',
+      Postal_Code: '8101'
     },
     Order_Placed_At: '2026-07-31T10:15:00.000Z',
     Additional_Info: 'Fragile ceramic item handle with care.'

@@ -8,6 +8,7 @@ export interface Address {
 
 export interface Customer {
   Customer_ID: string;
+  Username?: string;
   Name: string;
   Email: string;
   Password?: string;
@@ -17,6 +18,7 @@ export interface Customer {
 
 export interface Admin {
   Admin_ID: string;
+  Username?: string;
   Name: string;
   Email: string;
   Password?: string;
@@ -28,6 +30,7 @@ export type SellerStatus = 'pending' | 'approved' | 'rejected' | 'suspended';
 
 export interface Seller {
   Seller_ID: string;
+  Username?: string;
   Name: string;
   Email: string;
   Password?: string;

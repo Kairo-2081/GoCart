@@ -14,14 +14,21 @@ import {
   UserCheck,
 } from 'lucide-react';
 
+export type NavigationTab =
+  | 'storefront'
+  | 'orders'
+  | 'profile'
+  | 'seller-dashboard'
+  | 'admin-dashboard';
+
 interface NavbarProps {
   isLoggedIn: boolean;
   currentRole: UserRole;
   currentCustomer: Customer | null;
   currentSeller: Seller | null;
   admin: Admin | null;
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
+  activeTab: NavigationTab;
+  setActiveTab: (tab: NavigationTab) => void;
   cartCount: number;
   onOpenCart: () => void;
   onOpenLogin: () => void;
