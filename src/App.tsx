@@ -14,7 +14,7 @@ import {
 } from './types';
 import { api, db } from './lib/api';
 import { LandingPage } from './components/LandingPage';
-import { Navbar } from './components/Navbar';
+import { Navbar, NavigationTab } from './components/Navbar';
 import { RoleSwitcher } from './components/RoleSwitcher';
 import { Storefront } from './components/storefront/Storefront';
 import { ProductDetailModal } from './components/storefront/ProductDetailModal';
@@ -38,9 +38,7 @@ export default function App() {
   // Authentication State
   const [isLoggedIn, setIsLoggedIn] = React.useState<boolean>(false);
   const [currentRole, setCurrentRole] = React.useState<UserRole>('customer');
-  const [activeTab, setActiveTab] = React.useState<
-    'storefront' | 'orders' | 'profile' | 'seller-dashboard' | 'admin-dashboard'
-  >('storefront');
+  const [activeTab, setActiveTab] = React.useState<NavigationTab>('storefront');
 
   // Logged-in Entities
   const [selectedCustomer, setSelectedCustomer] = React.useState<Customer | null>(null);
@@ -571,10 +569,11 @@ export default function App() {
         category={categories.find((c) => c.Category_ID === selectedProductForDetail?.Category_ID)}
         seller={sellers.find((s) => s.Seller_ID === selectedProductForDetail?.Seller_ID)}
         reviews={reviews}
-        currentCustomer={selectedCustomer || customers[0]}
+        currentCustomer={selectedCustomer || null}
         onClose={() => setSelectedProductForDetail(null)}
         onAddToCart={handleAddToCart}
         onSubmitReview={handleSubmitReview}
+        onOpenLogin={() => setIsLoginModalOpen(true)}
       />
 
       {/* Cart Drawer */}

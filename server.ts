@@ -1,12 +1,15 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
-import { query } from './src/db/index.ts';
+import { query, getDatabaseProviderInfo } from './src/db/index.ts';
 import { seedDatabaseIfEmpty } from './src/db/seed.ts';
 import { getOrCreateUser, updateUserRole } from './src/db/users.ts';
+import { hashPassword, comparePassword, isBcryptHash } from './src/db/password.ts';
 import { requireAuth, optionalAuth, AuthRequest } from './src/middleware/auth.ts';
 import { Admin, Category, Seller, Customer, Product, Review, Order, CartItem, Address, OrderItem } from './src/types.ts';
-import { initialCustomers, initialAdmin } from './src/data/seedData.ts';
+import { initialCustomers, initialAdmin, initialSellers } from './src/data/seedData.ts';
 
 const app = express();
 const PORT = 3000;
@@ -15,28 +18,41 @@ app.use(express.json());
 
 // Seed Cloud SQL database if empty on server startup
 seedDatabaseIfEmpty().catch((err) => {
-  console.error('Database seeding failed on startup:', err);
+  console.error('Database seeding check failed on startup:', err);
 });
 
-// --- CLOUD SQL DATABASE STATUS ENDPOINT ---
+// Helper function to construct structured Address object from SQL table columns
+function mapAddress(row: any): Address {
+  return {
+    House_Name: row.address_house_name || '',
+    Street: row.address_street || '',
+    City: row.address_city || '',
+    Postal_Code: row.address_postal_code || '',
+    Additional_Info: row.address_additional_info || '',
+  };
+}
+
+// --- DATABASE STATUS ENDPOINT (SUPABASE / POSTGRESQL) ---
 app.get('/api/db/status', async (req, res) => {
+  const providerInfo = getDatabaseProviderInfo();
   try {
     const result = await query(`SELECT 1 as test, current_database() as db_name, version() as pg_version`);
-    const dbName = process.env.SQL_DB_NAME || 'postgres';
-    const host = process.env.SQL_HOST || 'local_socket';
     res.json({
       connected: true,
-      provider: 'Cloud SQL (PostgreSQL - Raw SQL Driver)',
-      database: dbName,
-      host: host,
+      provider: providerInfo.provider,
+      isSupabase: providerInfo.isSupabase,
+      database: result.rows[0]?.db_name || providerInfo.database,
+      host: providerInfo.host,
       status: 'Connected & Healthy',
       queryTest: result.rows[0] || null,
     });
   } catch (error: any) {
-    console.error('Cloud SQL Connection Error:', error);
+    console.error('Database Connection Error:', error);
     res.status(500).json({
       connected: false,
-      provider: 'Cloud SQL (PostgreSQL)',
+      provider: providerInfo.provider,
+      isSupabase: providerInfo.isSupabase,
+      database: providerInfo.database,
       error: error.message || 'Database connection error',
     });
   }
@@ -48,7 +64,7 @@ app.get('/api/auth/me', optionalAuth, async (req: AuthRequest, res) => {
     if (!req.user) {
       return res.json({ authenticated: false, user: null });
     }
-    const dbUser = await getOrCreateUser(req.user.uid, req.user.email || 'user@example.com', 'customer', req.user.name, req.user.picture);
+    const dbUser = await getOrCreateUser(req.user.uid, req.user.email || 'user@example.com', 'customer', req.user.name);
     res.json({ authenticated: true, user: dbUser });
   } catch (error: any) {
     console.error('Error fetching current user:', error);
@@ -127,10 +143,11 @@ app.get('/api/sellers', async (req, res) => {
     const result = await query(`SELECT * FROM sellers ORDER BY created_at DESC`);
     const formatted: Seller[] = result.rows.map((s: any) => ({
       Seller_ID: s.id,
+      Username: s.username,
       Name: s.name,
       Email: s.email,
       Number: s.number || '',
-      Address: s.address_json ? (typeof s.address_json === 'string' ? JSON.parse(s.address_json) : s.address_json) : { Street: '', House_Name: '', City: '', Postal_Code: '' },
+      Address: mapAddress(s),
       Logo: s.logo || '',
       Description: s.description || '',
       Status: s.status as any,
@@ -145,38 +162,54 @@ app.get('/api/sellers', async (req, res) => {
 
 app.post('/api/sellers', async (req, res) => {
   try {
-    const { Name, Email, Password, Number: phoneNum, Address, Logo, Description } = req.body;
+    const { Name, Email, Password, Number: phoneNum, Address, Logo, Description, Username } = req.body;
     if (!Name || !Email) {
       return res.status(400).json({ error: 'Name and Email are required' });
     }
     const id = `SEL-${Date.now()}`;
-    const addressJson = JSON.stringify(Address || { Street: '', House_Name: '', City: '', Postal_Code: '' });
-    const sellerPassword = Password || 'password123';
+    const rawPassword = Password || 'seller123';
+    const hashedPassword = await hashPassword(rawPassword);
     const logoUrl = Logo || 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=200&auto=format&fit=crop&q=80';
     const desc = Description || '';
     const phone = phoneNum || '';
+    const username = Username || Email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    const addr = Address || {};
+    const houseName = addr.House_Name || '';
+    const street = addr.Street || '';
+    const city = addr.City || '';
+    const postalCode = addr.Postal_Code || '';
+    const addInfo = addr.Additional_Info || '';
 
     await query(
-      `INSERT INTO sellers (id, name, email, password, number, address_json, logo, description, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', NOW())`,
-      [id, Name, Email, sellerPassword, phone, addressJson, logoUrl, desc]
+      `INSERT INTO sellers (id, username, name, email, password, number, logo, description, status, address_house_name, address_street, address_city, address_postal_code, address_additional_info, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
+       ON CONFLICT (id) DO UPDATE SET name = $3, email = $4, password = $5, number = $6, logo = $7, description = $8,
+         address_house_name = $9, address_street = $10, address_city = $11, address_postal_code = $12, address_additional_info = $13`,
+      [id, username, Name, Email, hashedPassword, phone, logoUrl, desc, houseName, street, city, postalCode, addInfo]
     );
 
-    // Also register corresponding user in users table via SQL
+    // Also register corresponding user in users table
     await query(
-      `INSERT INTO users (uid, email, password, role, name, avatar)
-       VALUES ($1, $2, $3, 'seller', $4, $5)
-       ON CONFLICT (uid) DO UPDATE SET email = $2, password = $3, name = $4, avatar = $5`,
-      [id, Email, sellerPassword, Name, logoUrl]
+      `INSERT INTO users (id, username, password, email, role, entity_id, created_at)
+       VALUES ($1, $2, $3, $4, 'seller', $5, CURRENT_TIMESTAMP)
+       ON CONFLICT (id) DO UPDATE SET email = $4, password = $3`,
+      [`USR-${id}`, username, hashedPassword, Email, id]
     );
 
     const newSeller: Seller = {
       Seller_ID: id,
+      Username: username,
       Name,
       Email,
-      Password: sellerPassword,
       Number: phone,
-      Address: Address || { Street: '', House_Name: '', City: '', Postal_Code: '' },
+      Address: {
+        House_Name: houseName,
+        Street: street,
+        City: city,
+        Postal_Code: postalCode,
+        Additional_Info: addInfo,
+      },
       Logo: logoUrl,
       Description: desc,
       Status: 'pending',
@@ -199,10 +232,11 @@ app.put('/api/sellers/:id/status', async (req, res) => {
     const s: any = result.rows[0];
     res.json({
       Seller_ID: s.id,
+      Username: s.username,
       Name: s.name,
       Email: s.email,
       Number: s.number || '',
-      Address: s.address_json ? (typeof s.address_json === 'string' ? JSON.parse(s.address_json) : s.address_json) : { Street: '', House_Name: '', City: '', Postal_Code: '' },
+      Address: mapAddress(s),
       Logo: s.logo || '',
       Description: s.description || '',
       Status: s.status,
@@ -216,25 +250,20 @@ app.put('/api/sellers/:id/status', async (req, res) => {
 // --- CUSTOMERS API (RAW POSTGRESQL SQL QUERIES) ---
 app.get('/api/customers', async (req, res) => {
   try {
-    const result = await query(`SELECT * FROM users WHERE role = 'customer' ORDER BY id ASC`);
-    const formatted: Customer[] = result.rows.map((u: any) => ({
-      Customer_ID: u.uid || `CUST-${u.id}`,
-      Name: u.name || 'Customer User',
-      Email: u.email,
-      Number: '+1 (555) 234-5678',
-      Address: {
-        Street: '742 Evergreen Terrace',
-        House_Name: 'Apt 4B',
-        City: 'Springfield',
-        Postal_Code: '97477',
-      },
-    }));
-
-    if (formatted.length === 0) {
-      return res.json(initialCustomers);
+    const result = await query(`SELECT * FROM customers ORDER BY created_at ASC`);
+    if (result.rows.length > 0) {
+      return res.json(
+        result.rows.map((c: any) => ({
+          Customer_ID: c.id,
+          Username: c.username,
+          Name: c.name,
+          Email: c.email,
+          Number: c.number || '',
+          Address: mapAddress(c),
+        }))
+      );
     }
-
-    res.json(formatted);
+    return res.json(initialCustomers);
   } catch (error: any) {
     console.error('Error fetching customers:', error);
     res.json(initialCustomers);
@@ -243,29 +272,52 @@ app.get('/api/customers', async (req, res) => {
 
 app.post('/api/customers', async (req, res) => {
   try {
-    const { Name, Email, Password, Number: phoneNum, Address } = req.body;
-    const uid = `CUST-${Date.now()}`;
-    const custPassword = Password || 'password123';
-    const email = Email || 'customer@example.com';
-    const name = Name || 'Customer User';
-    const avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`;
+    const { Name, Email, Password, Number: phoneNum, Address, Username } = req.body;
+    const id = `CUST-${Date.now()}`;
+    const rawPassword = Password || 'password123';
+    const hashedPassword = await hashPassword(rawPassword);
+    const email = Email || (Username ? `${Username}@gmail.com` : 'customer@gmail.com');
+    const name = Name || Username || 'Customer User';
+    const username = Username || email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+    const phone = phoneNum || '+8801700-000000';
+
+    const addr = Address || {};
+    const houseName = addr.House_Name || 'Apt 4B';
+    const street = addr.Street || '742 Evergreen Terrace';
+    const city = addr.City || 'Barishal';
+    const postalCode = addr.Postal_Code || '9777';
+    const addInfo = addr.Additional_Info || '';
 
     await query(
-      `INSERT INTO users (uid, email, password, role, name, avatar)
-       VALUES ($1, $2, $3, 'customer', $4, $5)
-       ON CONFLICT (uid) DO UPDATE SET email = $2, password = $3, name = $4, avatar = $5`,
-      [uid, email, custPassword, name, avatar]
+      `INSERT INTO customers (id, username, name, email, password, number, address_house_name, address_street, address_city, address_postal_code, address_additional_info, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
+       ON CONFLICT (id) DO UPDATE SET name = $3, email = $4, password = $5, number = $6`,
+      [id, username, name, email, hashedPassword, phone, houseName, street, city, postalCode, addInfo]
+    );
+
+    await query(
+      `INSERT INTO users (id, username, password, email, role, entity_id, created_at)
+       VALUES ($1, $2, $3, $4, 'customer', $5, CURRENT_TIMESTAMP)
+       ON CONFLICT (id) DO UPDATE SET email = $4, password = $3`,
+      [`USR-${id}`, username, hashedPassword, email, id]
     );
 
     res.status(201).json({
-      Customer_ID: uid,
+      Customer_ID: id,
+      Username: username,
       Name: name,
       Email: email,
-      Password: custPassword,
-      Number: phoneNum || '+1 (555) 000-0000',
-      Address: Address || { Street: '', House_Name: '', City: '', Postal_Code: '' },
+      Number: phone,
+      Address: {
+        House_Name: houseName,
+        Street: street,
+        City: city,
+        Postal_Code: postalCode,
+        Additional_Info: addInfo,
+      },
     });
   } catch (error: any) {
+    console.error('Error creating customer:', error);
     res.status(500).json({ error: 'Failed to create customer' });
   }
 });
@@ -274,13 +326,33 @@ app.put('/api/customers/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { Name, Email, Number: phoneNum, Address } = req.body;
-    await query(`UPDATE users SET name = $1, email = $2 WHERE uid = $3`, [Name, Email, id]);
+    const addr = Address || {};
+
+    await query(
+      `UPDATE customers
+       SET name = COALESCE($1, name),
+           email = COALESCE($2, email),
+           number = COALESCE($3, number),
+           address_house_name = COALESCE($4, address_house_name),
+           address_street = COALESCE($5, address_street),
+           address_city = COALESCE($6, address_city),
+           address_postal_code = COALESCE($7, address_postal_code),
+           address_additional_info = COALESCE($8, address_additional_info)
+       WHERE id = $9`,
+      [Name, Email, phoneNum, addr.House_Name, addr.Street, addr.City, addr.Postal_Code, addr.Additional_Info, id]
+    );
+
+    const updated = await query(`SELECT * FROM customers WHERE id = $1`, [id]);
+    if (updated.rows.length === 0) return res.status(404).json({ error: 'Customer not found' });
+    const c = updated.rows[0];
+
     res.json({
-      Customer_ID: id,
-      Name,
-      Email,
-      Number: phoneNum || '',
-      Address: Address || { Street: '', House_Name: '', City: '', Postal_Code: '' },
+      Customer_ID: c.id,
+      Username: c.username,
+      Name: c.name,
+      Email: c.email,
+      Number: c.number || '',
+      Address: mapAddress(c),
     });
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to update customer' });
@@ -290,23 +362,20 @@ app.put('/api/customers/:id', async (req, res) => {
 // --- ADMINS API (RAW POSTGRESQL SQL QUERIES) ---
 app.get('/api/admins', async (req, res) => {
   try {
-    const result = await query(`SELECT * FROM users WHERE role = 'admin' ORDER BY id ASC`);
-    const formatted: Admin[] = result.rows.map((u: any) => ({
-      Admin_ID: u.uid || `ADM-${u.id}`,
-      Name: u.name || 'Admin User',
-      Email: u.email,
-      Number: '+1 (800) 555-0199',
-      Address: {
-        Street: '1 Marketplace Way',
-        House_Name: 'HQ Tower Floor 15',
-        City: 'San Jose',
-        Postal_Code: '95113',
-      },
-    }));
-    if (formatted.length === 0) {
-      return res.json([initialAdmin]);
+    const result = await query(`SELECT * FROM admins ORDER BY created_at ASC`);
+    if (result.rows.length > 0) {
+      return res.json(
+        result.rows.map((a: any) => ({
+          Admin_ID: a.id,
+          Username: a.username,
+          Name: a.name,
+          Email: a.email,
+          Number: a.number || '',
+          Address: mapAddress(a),
+        }))
+      );
     }
-    res.json(formatted);
+    return res.json([initialAdmin]);
   } catch (error: any) {
     res.json([initialAdmin]);
   }
@@ -314,111 +383,271 @@ app.get('/api/admins', async (req, res) => {
 
 app.post('/api/admins', async (req, res) => {
   try {
-    const { Name, Email, Password, Number: phoneNum, Address } = req.body;
-    const uid = `ADM-${Date.now()}`;
-    const adminPassword = Password || 'password123';
-    const email = Email || 'admin@example.com';
-    const name = Name || 'Admin User';
-    const avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`;
+    const { Name, Email, Password, Number: phoneNum, Address, Username } = req.body;
+    const id = `ADM-${Date.now()}`;
+    const rawPassword = Password || 'admin123';
+    const hashedPassword = await hashPassword(rawPassword);
+    const email = Email || (Username ? `${Username}@gocart.com` : 'admin@gocart.com');
+    const name = Name || Username || 'Admin User';
+    const username = Username || email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+    const phone = phoneNum || '+88017555-01949';
+
+    const addr = Address || {};
+    const houseName = addr.House_Name || 'HQ Tower Floor 15';
+    const street = addr.Street || '1 Marketplace Way';
+    const city = addr.City || 'Dhaka';
+    const postalCode = addr.Postal_Code || '9513';
+    const addInfo = addr.Additional_Info || 'GoCart Operations Center';
 
     await query(
-      `INSERT INTO users (uid, email, password, role, name, avatar)
-       VALUES ($1, $2, $3, 'admin', $4, $5)
-       ON CONFLICT (uid) DO UPDATE SET email = $2, password = $3, name = $4, avatar = $5`,
-      [uid, email, adminPassword, name, avatar]
+      `INSERT INTO admins (id, username, name, email, password, number, address_house_name, address_street, address_city, address_postal_code, address_additional_info, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
+       ON CONFLICT (id) DO UPDATE SET name = $3, email = $4, password = $5`,
+      [id, username, name, email, hashedPassword, phone, houseName, street, city, postalCode, addInfo]
+    );
+
+    await query(
+      `INSERT INTO users (id, username, password, email, role, entity_id, created_at)
+       VALUES ($1, $2, $3, $4, 'admin', $5, CURRENT_TIMESTAMP)
+       ON CONFLICT (id) DO UPDATE SET email = $4, password = $3`,
+      [`USR-${id}`, username, hashedPassword, email, id]
     );
 
     res.status(201).json({
-      Admin_ID: uid,
+      Admin_ID: id,
+      Username: username,
       Name: name,
       Email: email,
-      Password: adminPassword,
-      Number: phoneNum || '+1 (800) 555-0000',
-      Address: Address || { Street: '1 Marketplace Way', House_Name: 'HQ Tower Floor 15', City: 'San Jose', Postal_Code: '95113' },
+      Number: phone,
+      Address: {
+        House_Name: houseName,
+        Street: street,
+        City: city,
+        Postal_Code: postalCode,
+        Additional_Info: addInfo,
+      },
     });
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to create admin' });
   }
 });
 
-// --- AUTHENTICATION LOGIN API (RAW POSTGRESQL SQL QUERIES) ---
+// --- AUTHENTICATION LOGIN API (STRICT RAW POSTGRESQL SQL QUERIES WITH BCRYPT HASHING) ---
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { email, password, role } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and Password are required' });
+    const { email, password } = req.body;
+    if (!email || typeof email !== 'string' || !email.trim() || !password || typeof password !== 'string') {
+      return res.status(400).json({ error: 'Username/Email and Password are required' });
     }
 
-    const cleanEmail = String(email).trim().toLowerCase();
+    const cleanInput = email.trim();
+    const cleanLower = cleanInput.toLowerCase();
 
-    if (role === 'seller') {
-      const sellerRes = await query(
-        `SELECT * FROM sellers WHERE LOWER(email) = $1 OR LOWER(id) = $1 LIMIT 1`,
-        [cleanEmail]
-      );
-      if (sellerRes.rows.length > 0) {
-        const matchSeller: any = sellerRes.rows[0];
-        if (!matchSeller.password || matchSeller.password === password || password === 'password123') {
+    // 1. Check users table for global authenticated user
+    const userRes = await query(
+      `SELECT * FROM users 
+       WHERE LOWER(username) = $1 
+          OR LOWER(email) = $1 
+          OR id = $2
+       LIMIT 1`,
+      [cleanLower, cleanInput]
+    );
+
+    if (userRes.rows.length > 0) {
+      const userMatch: any = userRes.rows[0];
+      const isMatch = await comparePassword(password, userMatch.password);
+
+      if (!isMatch) {
+        return res.status(401).json({ error: 'Incorrect password for this account. Please try again.' });
+      }
+
+      // If password was stored as plain text, upgrade to bcrypt hash now
+      if (userMatch.password && !isBcryptHash(userMatch.password)) {
+        const newHash = await hashPassword(password);
+        await query(`UPDATE users SET password = $1 WHERE id = $2`, [newHash, userMatch.id]);
+      }
+
+      const userRole = userMatch.role;
+      const entityId = userMatch.entity_id;
+
+      if (userRole === 'seller') {
+        const sellerRes = await query(
+          `SELECT * FROM sellers WHERE id = $1 OR LOWER(username) = $2 OR LOWER(email) = $2 LIMIT 1`,
+          [entityId, cleanLower]
+        );
+        if (sellerRes.rows.length > 0) {
+          const s = sellerRes.rows[0];
           return res.json({
             success: true,
             role: 'seller',
             entity: {
-              Seller_ID: matchSeller.id,
-              Name: matchSeller.name,
-              Email: matchSeller.email,
-              Number: matchSeller.number || '',
-              Address: matchSeller.address_json ? (typeof matchSeller.address_json === 'string' ? JSON.parse(matchSeller.address_json) : matchSeller.address_json) : { Street: '', House_Name: '', City: '', Postal_Code: '' },
-              Logo: matchSeller.logo || '',
-              Description: matchSeller.description || '',
-              Status: matchSeller.status,
-              Created_At: matchSeller.created_at ? new Date(matchSeller.created_at).toISOString() : new Date().toISOString(),
+              Seller_ID: s.id,
+              Username: s.username,
+              Name: s.name,
+              Email: s.email,
+              Number: s.number || '',
+              Address: mapAddress(s),
+              Logo: s.logo || '',
+              Description: s.description || '',
+              Status: s.status || 'approved',
+              Created_At: s.created_at ? new Date(s.created_at).toISOString() : new Date().toISOString(),
+            },
+          });
+        }
+      } else if (userRole === 'admin') {
+        const adminRes = await query(
+          `SELECT * FROM admins WHERE id = $1 OR LOWER(username) = $2 OR LOWER(email) = $2 LIMIT 1`,
+          [entityId, cleanLower]
+        );
+        if (adminRes.rows.length > 0) {
+          const a = adminRes.rows[0];
+          return res.json({
+            success: true,
+            role: 'admin',
+            entity: {
+              Admin_ID: a.id,
+              Username: a.username,
+              Name: a.name,
+              Email: a.email,
+              Number: a.number || '',
+              Address: mapAddress(a),
+            },
+          });
+        }
+      } else {
+        // Customer
+        const custRes = await query(
+          `SELECT * FROM customers WHERE id = $1 OR LOWER(username) = $2 OR LOWER(email) = $2 LIMIT 1`,
+          [entityId, cleanLower]
+        );
+        if (custRes.rows.length > 0) {
+          const c = custRes.rows[0];
+          return res.json({
+            success: true,
+            role: 'customer',
+            entity: {
+              Customer_ID: c.id,
+              Username: c.username,
+              Name: c.name,
+              Email: c.email,
+              Number: c.number || '',
+              Address: mapAddress(c),
             },
           });
         }
       }
     }
 
-    // Check users table for customer, admin, or seller using SQL
-    const userRes = await query(
-      `SELECT * FROM users WHERE LOWER(email) = $1 OR LOWER(uid) = $1 LIMIT 1`,
-      [cleanEmail]
+    // 2. Direct lookup in admins table (exact match)
+    const adminRes = await query(
+      `SELECT * FROM admins 
+       WHERE LOWER(email) = $1 
+          OR LOWER(username) = $1
+          OR id = $2
+       LIMIT 1`,
+      [cleanLower, cleanInput]
     );
-    if (userRes.rows.length > 0) {
-      const userMatch: any = userRes.rows[0];
-      if (!userMatch.password || userMatch.password === password || password === 'password123') {
-        const userRole = (role || userMatch.role || 'customer') as any;
-        return res.json({
-          success: true,
-          role: userRole,
-          entity: {
-            Customer_ID: userMatch.uid,
-            Admin_ID: userMatch.uid,
-            Name: userMatch.name || 'User',
-            Email: userMatch.email,
-            Number: '+1 (555) 234-5678',
-            Address: { Street: '1 Marketplace Way', House_Name: 'Suite 100', City: 'San Francisco', Postal_Code: '94105' },
-          },
-        });
-      }
-    }
 
-    // Fallback for demo logins
-    if (password === 'password123' || password === 'ADMIN123') {
+    if (adminRes.rows.length > 0) {
+      const a: any = adminRes.rows[0];
+      const isMatch = await comparePassword(password, a.password);
+      if (!isMatch) {
+        return res.status(401).json({ error: 'Incorrect password for this Admin account. Please try again.' });
+      }
+      if (a.password && !isBcryptHash(a.password)) {
+        const newHash = await hashPassword(password);
+        await query(`UPDATE admins SET password = $1 WHERE id = $2`, [newHash, a.id]);
+      }
       return res.json({
         success: true,
-        role: role || 'customer',
+        role: 'admin',
         entity: {
-          Customer_ID: `CUST-${Date.now()}`,
-          Admin_ID: `ADM-${Date.now()}`,
-          Name: cleanEmail.split('@')[0],
-          Email: cleanEmail,
-          Number: '+1 (555) 000-0000',
-          Address: { Street: '1 Marketplace Way', House_Name: 'Suite 100', City: 'San Francisco', Postal_Code: '94105' },
+          Admin_ID: a.id,
+          Username: a.username,
+          Name: a.name,
+          Email: a.email,
+          Number: a.number || '',
+          Address: mapAddress(a),
         },
       });
     }
 
-    res.status(401).json({ error: 'Invalid email or password. Please try again.' });
+    // 3. Direct lookup in sellers table (exact match)
+    const sellerRes = await query(
+      `SELECT * FROM sellers 
+       WHERE LOWER(email) = $1 
+          OR LOWER(username) = $1
+          OR id = $2
+       LIMIT 1`,
+      [cleanLower, cleanInput]
+    );
+
+    if (sellerRes.rows.length > 0) {
+      const matchSeller: any = sellerRes.rows[0];
+      const isMatch = await comparePassword(password, matchSeller.password);
+      if (!isMatch) {
+        return res.status(401).json({ error: 'Incorrect password for this Seller account. Please try again.' });
+      }
+      if (matchSeller.password && !isBcryptHash(matchSeller.password)) {
+        const newHash = await hashPassword(password);
+        await query(`UPDATE sellers SET password = $1 WHERE id = $2`, [newHash, matchSeller.id]);
+      }
+      return res.json({
+        success: true,
+        role: 'seller',
+        entity: {
+          Seller_ID: matchSeller.id,
+          Username: matchSeller.username,
+          Name: matchSeller.name,
+          Email: matchSeller.email,
+          Number: matchSeller.number || '',
+          Address: mapAddress(matchSeller),
+          Logo: matchSeller.logo || '',
+          Description: matchSeller.description || '',
+          Status: matchSeller.status || 'approved',
+          Created_At: matchSeller.created_at ? new Date(matchSeller.created_at).toISOString() : new Date().toISOString(),
+        },
+      });
+    }
+
+    // 4. Direct lookup in customers table (exact match)
+    const customerRes = await query(
+      `SELECT * FROM customers 
+       WHERE LOWER(email) = $1 
+          OR LOWER(username) = $1
+          OR id = $2
+       LIMIT 1`,
+      [cleanLower, cleanInput]
+    );
+
+    if (customerRes.rows.length > 0) {
+      const c: any = customerRes.rows[0];
+      const isMatch = await comparePassword(password, c.password);
+      if (!isMatch) {
+        return res.status(401).json({ error: 'Incorrect password for this Customer account. Please try again.' });
+      }
+      if (c.password && !isBcryptHash(c.password)) {
+        const newHash = await hashPassword(password);
+        await query(`UPDATE customers SET password = $1 WHERE id = $2`, [newHash, c.id]);
+      }
+      return res.json({
+        success: true,
+        role: 'customer',
+        entity: {
+          Customer_ID: c.id,
+          Username: c.username,
+          Name: c.name,
+          Email: c.email,
+          Number: c.number || '',
+          Address: mapAddress(c),
+        },
+      });
+    }
+
+    // 5. If no account exists with that username/email
+    return res.status(401).json({
+      error: `No registered account found for "${cleanInput}". Please create an account first.`,
+    });
   } catch (error: any) {
     console.error('Error during login:', error);
     res.status(500).json({ error: 'Login authentication failed' });
@@ -491,8 +720,8 @@ app.post('/api/products', async (req, res) => {
     const prodStat = Product_Status || 'active';
 
     await query(
-      `INSERT INTO products (id, name, image, description, price, voucher, stock, product_status, category_id, seller_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      `INSERT INTO products (id, name, image, description, price, voucher, stock, product_status, category_id, seller_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)`,
       [id, Name, img, desc, priceNum, vouch, stockNum, prodStat, Category_ID, Seller_ID]
     );
 
@@ -589,8 +818,8 @@ app.get('/api/cart', async (req, res) => {
   try {
     const { customerId } = req.query;
     const itemsRes = customerId && typeof customerId === 'string'
-      ? await query(`SELECT * FROM cart_items WHERE customer_id = $1`, [customerId])
-      : await query(`SELECT * FROM cart_items`);
+      ? await query(`SELECT * FROM cart WHERE customer_id = $1`, [customerId])
+      : await query(`SELECT * FROM cart`);
 
     const productsRes = await query(`SELECT * FROM products`);
     const allProducts: any[] = productsRes.rows;
@@ -634,21 +863,21 @@ app.post('/api/cart', async (req, res) => {
     }
 
     const existing = await query(
-      `SELECT * FROM cart_items WHERE customer_id = $1 AND product_id = $2 LIMIT 1`,
+      `SELECT * FROM cart WHERE customer_id = $1 AND product_id = $2 LIMIT 1`,
       [Customer_ID, Product_ID]
     );
 
     if (existing.rows.length > 0) {
       const currentItem: any = existing.rows[0];
       const newQty = Number(currentItem.quantity) + Number(Quantity);
-      await query(`UPDATE cart_items SET quantity = $1 WHERE id = $2`, [newQty, currentItem.id]);
+      await query(`UPDATE cart SET quantity = $1 WHERE id = $2`, [newQty, currentItem.id]);
       return res.json({ Cart_ID: currentItem.id, Customer_ID, Product_ID, Quantity: newQty });
     }
 
     const cartId = `CART-${Date.now()}`;
     const qty = Number(Quantity);
     await query(
-      `INSERT INTO cart_items (id, customer_id, product_id, quantity)
+      `INSERT INTO cart (id, customer_id, product_id, quantity)
        VALUES ($1, $2, $3, $4)`,
       [cartId, Customer_ID, Product_ID, qty]
     );
@@ -665,7 +894,7 @@ app.put('/api/cart/:cartId', async (req, res) => {
     const { cartId } = req.params;
     const { Quantity } = req.body;
     const qty = Math.max(1, Number(Quantity));
-    await query(`UPDATE cart_items SET quantity = $1 WHERE id = $2`, [qty, cartId]);
+    await query(`UPDATE cart SET quantity = $1 WHERE id = $2`, [qty, cartId]);
     res.json({ Cart_ID: cartId, Quantity: qty });
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to update cart item' });
@@ -675,7 +904,7 @@ app.put('/api/cart/:cartId', async (req, res) => {
 app.delete('/api/cart/:cartId', async (req, res) => {
   try {
     const { cartId } = req.params;
-    await query(`DELETE FROM cart_items WHERE id = $1`, [cartId]);
+    await query(`DELETE FROM cart WHERE id = $1`, [cartId]);
     res.json({ success: true, message: 'Cart item removed' });
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to remove cart item' });
@@ -736,12 +965,12 @@ app.post('/api/orders', async (req, res) => {
 
     await query(
       `INSERT INTO orders (id, tracking_id, customer_id, items_json, subtotal, shipping_fee, status, shipping_address_json, billing_address_json, additional_info, order_placed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'placed', $7, $8, $9, NOW())`,
+       VALUES ($1, $2, $3, $4, $5, $6, 'placed', $7, $8, $9, CURRENT_TIMESTAMP)`,
       [id, Tracking_ID, Customer_ID, itemsJson, subtotal, shippingFee, shipAddrJson, billAddrJson, addInfo]
     );
 
-    // Clear cart for customer using SQL
-    await query(`DELETE FROM cart_items WHERE customer_id = $1`, [Customer_ID]);
+    // Clear cart for customer in PostgreSQL
+    await query(`DELETE FROM cart WHERE customer_id = $1`, [Customer_ID]);
 
     const newOrder: Order = {
       Order_ID: id,
@@ -812,7 +1041,7 @@ app.post('/api/reviews', async (req, res) => {
 
     await query(
       `INSERT INTO reviews (id, product_id, customer_id, customer_name, review_text, rating, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
       [id, Product_ID, Customer_ID, custName, revText, ratingNum]
     );
 
@@ -867,7 +1096,7 @@ app.get('/api/stats', async (req, res) => {
 // Admin Users List API (Raw SQL Query)
 app.get('/api/admin/users', async (req, res) => {
   try {
-    const result = await query(`SELECT id, uid, email, role, name, avatar, created_at FROM users ORDER BY id ASC`);
+    const result = await query(`SELECT id, username, email, role, entity_id, created_at FROM users ORDER BY created_at DESC`);
     res.json(result.rows);
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to fetch users' });
@@ -901,7 +1130,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Cloud SQL E-Commerce Server running on http://localhost:${PORT}`);
+    console.log(`E-Commerce Server running on http://localhost:${PORT}`);
   });
 }
 
