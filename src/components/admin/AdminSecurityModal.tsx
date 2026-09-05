@@ -63,7 +63,7 @@ export const AdminSecurityModal: React.FC<AdminSecurityModalProps> = ({
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
           <div className="p-3 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900 text-purple-900 dark:text-purple-200 rounded-xl flex items-center justify-between gap-2">
             <div>
-              🔑 <strong>Master Security Key:</strong> <code className="bg-purple-200 dark:bg-purple-900/60 px-1.5 py-0.5 rounded font-mono font-bold">ADMIN123</code>
+               <strong>Master Security Key:</strong> <code className="bg-purple-200 dark:bg-purple-900/60 px-1.5 py-0.5 rounded font-mono font-bold">ADMIN123</code>
             </div>
             <button
               type="button"
