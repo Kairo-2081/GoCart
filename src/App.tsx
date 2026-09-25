@@ -1,395 +1,96 @@
 import React from 'react';
+import { RefreshCw } from 'lucide-react';
 import {
-  UserRole,
-  Customer,
-  Seller,
   Admin,
-  Category,
+  Customer,
   Product,
-  Order,
-  CartItem,
-  Review,
-  SellerStatus,
   ProductStatus,
+  Seller,
+  SellerStatus,
+  UserRole,
 } from './types';
-import { api, db, getAuthToken } from './lib/api';
+import { api, getAuthToken } from './lib/api';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+import { useCart } from './hooks/useCart';
+import { useMarketData } from './hooks/useMarketData';
 import { LandingPage } from './components/LandingPage';
-import { Navbar, NavigationTab } from './components/Navbar';
-import { RoleSwitcher } from './components/RoleSwitcher';
+import { NavigationTab } from './components/Navbar';
 import { Storefront } from './components/storefront/Storefront';
-import { ProductDetailModal } from './components/storefront/ProductDetailModal';
-import { CartDrawer } from './components/storefront/CartDrawer';
-import { CheckoutModal } from './components/storefront/CheckoutModal';
 import { SellerDashboard } from './components/seller/SellerDashboard';
-import { SellerSignupModal } from './components/seller/SellerSignupModal';
-import { CustomerSignupModal } from './components/customer/CustomerSignupModal';
-import { AdminSignupModal } from './components/admin/AdminSignupModal';
-import { AdminSecurityModal } from './components/admin/AdminSecurityModal';
-import { LoginModal } from './components/LoginModal';
 import { CustomerOrders } from './components/customer/CustomerOrders';
 import { CustomerProfile } from './components/customer/CustomerProfile';
 import { AdminDashboard } from './components/admin/AdminDashboard';
-import { RefreshCw, LayoutGrid, Database } from 'lucide-react';
+import { AppModalName, AppModalState, AppModals } from './components/layout/AppModals';
+import { MainLayout } from './components/layout/MainLayout';
 
-export default function App() {
-  // Navigation & View Mode
+const protectedTabRoles: Partial<Record<NavigationTab, UserRole>> = {
+  orders: 'customer',
+  profile: 'customer',
+  'seller-dashboard': 'seller',
+  'admin-dashboard': 'admin',
+};
+
+function AuthenticationGuard({
+  authorized,
+  onRequestLogin,
+  children,
+}: {
+  authorized: boolean;
+  onRequestLogin: () => void;
+  children: React.ReactNode;
+}) {
+  if (authorized) return <>{children}</>;
+  return (
+    <div className="mx-auto max-w-xl py-16 text-center">
+      <h2 className="text-lg font-semibold">Sign in required</h2>
+      <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">
+        Sign in with an account that has access to this section.
+      </p>
+      <button
+        onClick={onRequestLogin}
+        className="mt-5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+      >
+        Continue to sign in
+      </button>
+    </div>
+  );
+}
+
+function AppContent() {
+  const auth = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const cart = useCart();
+  const market = useMarketData({ refreshCart: cart.refreshCart });
   const [viewMode, setViewMode] = React.useState<'landing' | 'app'>('landing');
-
-  // Authentication State
-  const [isLoggedIn, setIsLoggedIn] = React.useState<boolean>(false);
-  const [currentRole, setCurrentRole] = React.useState<UserRole>('customer');
   const [activeTab, setActiveTab] = React.useState<NavigationTab>('storefront');
-
-  // Logged-in Entities
-  const [selectedCustomer, setSelectedCustomer] = React.useState<Customer | null>(null);
-  const [selectedSeller, setSelectedSeller] = React.useState<Seller | null>(null);
-  const [selectedAdmin, setSelectedAdmin] = React.useState<Admin | null>(null);
-
-  // Theme State ('dark' | 'light')
-  const [theme, setTheme] = React.useState<'dark' | 'light'>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('marketpulse_theme');
-      if (saved === 'light' || saved === 'dark') return saved;
-    }
-    return 'dark';
+  const [selectedProduct, setSelectedProduct] = React.useState<Product | null>(null);
+  const [modalState, setModalState] = React.useState<AppModalState>({
+    cart: false,
+    checkout: false,
+    customerSignup: false,
+    sellerSignup: false,
+    adminSignup: false,
+    login: false,
   });
 
-  React.useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-    localStorage.setItem('marketpulse_theme', theme);
-  }, [theme]);
-
-  const toggleTheme = React.useCallback(() => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  }, []);
-
-  // Core Entity States (Directly from Raw SQL Database)
-  const [categories, setCategories] = React.useState<Category[]>([]);
-  const [sellers, setSellers] = React.useState<Seller[]>([]);
-  const [products, setProducts] = React.useState<Product[]>([]);
-  const [customers, setCustomers] = React.useState<Customer[]>([]);
-  const [cart, setCart] = React.useState<CartItem[]>([]);
-  const [orders, setOrders] = React.useState<Order[]>([]);
-  const [reviews, setReviews] = React.useState<Review[]>([]);
-  const [admins, setAdmins] = React.useState<Admin[]>([]);
-
-  // UI Modals
-  const [isCartOpen, setIsCartOpen] = React.useState(false);
-  const [isCheckoutOpen, setIsCheckoutOpen] = React.useState(false);
-  const [selectedProductForDetail, setSelectedProductForDetail] = React.useState<Product | null>(null);
-  const [isCustomerRegistrationOpen, setIsCustomerRegistrationOpen] = React.useState(false);
-  const [isSellerRegistrationOpen, setIsSellerRegistrationOpen] = React.useState(false);
-  const [isAdminRegistrationOpen, setIsAdminRegistrationOpen] = React.useState(false);
-  const [isLoginModalOpen, setIsLoginModalOpen] = React.useState(false);
-  const [isAdminSecurityModalOpen, setIsAdminSecurityModalOpen] = React.useState(false);
-  const [isLoading, setIsLoading] = React.useState(true);
-
-  // Load public storefront data for guests and signed-in users.
-  const loadInitialData = React.useCallback(async () => {
-    try {
-      const [cats, sels, prods, revs] = await Promise.all([
-        api.getCategories(), api.getSellers(), api.getProducts(), api.getReviews(),
-      ]);
-      setCategories(cats);
-      setSellers(sels);
-      setProducts(prods);
-      setReviews(revs);
-    } catch (err) {
-      console.error('Failed to load public catalog data:', err);
-    }
-  }, []);
-
-  const loadRoleData = React.useCallback(async (role: UserRole, entity: any) => {
-    try {
-      if (role === 'customer') {
-        const [customerCart, customerOrders] = await Promise.all([
-          api.getCart(entity.Customer_ID), api.getOrders({ customerId: entity.Customer_ID }),
-        ]);
-        setCart(customerCart);
-        setOrders(customerOrders);
-      } else if (role === 'seller') {
-        const [sellerProducts, sellerOrders] = await Promise.all([
-          api.getProducts({ sellerId: entity.Seller_ID }), api.getOrders({ sellerId: entity.Seller_ID }),
-        ]);
-        setProducts((current) => [...sellerProducts, ...current.filter((p) => !sellerProducts.some((sp) => sp.Product_ID === p.Product_ID))]);
-        setOrders(sellerOrders);
-        setCart([]);
-      } else {
-        const [allCustomers, allOrders, allAdmins, allProducts] = await Promise.all([
-          api.getCustomers(), api.getOrders(), api.getAdmins(), api.getProducts(),
-        ]);
-        setCustomers(allCustomers);
-        setOrders(allOrders);
-        setAdmins(allAdmins);
-        setProducts(allProducts);
-        setCart([]);
-      }
-    } catch (err) {
-      console.error(`Failed to load ${role} data:`, err);
-    }
-  }, []);
+  const setModalOpen = (name: AppModalName, isOpen: boolean) => {
+    setModalState((previous) => ({ ...previous, [name]: isOpen }));
+  };
 
   React.useEffect(() => {
-    let active = true;
-    const initialize = async () => {
-      setIsLoading(true);
-      try {
-        await loadInitialData();
-        if (!getAuthToken()) return;
-        const result = await api.getCurrentUser();
-        if (!active || !result.authenticated || !result.user) return;
-        const { role, entity } = result.user;
-        if (role === 'customer') setSelectedCustomer(entity as Customer);
-        else if (role === 'seller') setSelectedSeller(entity as Seller);
-        else setSelectedAdmin(entity as Admin);
-        setCurrentRole(role);
-        setIsLoggedIn(true);
-        setViewMode('app');
-        setActiveTab(role === 'customer' ? 'storefront' : role === 'seller' ? 'seller-dashboard' : 'admin-dashboard');
-        await loadRoleData(role, entity);
-      } catch (err) {
-        console.error('Failed to restore authentication:', err);
-        api.logout();
-      } finally {
-        if (active) setIsLoading(false);
-      }
+    const handleUnauthorized = () => {
+      setModalState((previous) => ({ ...previous, cart: false, checkout: false, login: true }));
+      void market.loadInitialData();
     };
-    void initialize();
-    return () => { active = false; };
-  }, [loadInitialData, loadRoleData]);
+    window.addEventListener('marketpulse:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('marketpulse:unauthorized', handleUnauthorized);
+  }, [market.loadInitialData]);
 
-  // Load customer cart when selectedCustomer changes
-  React.useEffect(() => {
-    if (selectedCustomer && isLoggedIn) {
-      api
-        .getCart(selectedCustomer.Customer_ID)
-        .then(setCart)
-        .catch((err) => console.error('Error fetching cart:', err));
-    } else {
-      setCart([]);
-    }
-  }, [selectedCustomer, isLoggedIn]);
-
-  // Handle Login: by Username & Password simply!
-  const handleLoginSuccess = (role: UserRole, entity: any) => {
-    setIsLoggedIn(true);
-    setCurrentRole(role);
-
-    if (role === 'customer') {
-      setSelectedCustomer(entity as Customer);
-      setSelectedSeller(null);
-      setSelectedAdmin(null);
-      setActiveTab('storefront');
-    } else if (role === 'seller') {
-      setSelectedSeller(entity as Seller);
-      setSelectedCustomer(null);
-      setSelectedAdmin(null);
-      setActiveTab('seller-dashboard');
-    } else if (role === 'admin') {
-      setSelectedAdmin(entity as Admin);
-      setSelectedCustomer(null);
-      setSelectedSeller(null);
-      setActiveTab('admin-dashboard');
-    }
-    setViewMode('app');
-    void loadRoleData(role, entity);
-  };
-
-  // Handle Log Out: clear the JWT and any role-private data.
-  const handleLogout = () => {
-    api.logout();
-    setIsLoggedIn(false);
-    setSelectedCustomer(null);
-    setSelectedSeller(null);
-    setSelectedAdmin(null);
-    setCurrentRole('customer');
-    setActiveTab('storefront');
-    setCart([]);
-    setOrders([]);
-    setCustomers([]);
-    setAdmins([]);
-    void loadInitialData();
-  };
-
-  // Cart operations
-  const handleAddToCart = async (product: Product, quantity: number = 1) => {
-    if (!isLoggedIn || !selectedCustomer) {
-      setIsLoginModalOpen(true);
-      return;
-    }
-    try {
-      await api.addToCart(selectedCustomer.Customer_ID, product.Product_ID, quantity);
-      const updatedCart = await api.getCart(selectedCustomer.Customer_ID);
-      setCart(updatedCart);
-      setIsCartOpen(true);
-    } catch (err: any) {
-      alert(err.message || 'Failed to add item to cart');
-    }
-  };
-
-  const handleUpdateCartQuantity = async (cartId: string, quantity: number) => {
-    if (!selectedCustomer) return;
-    try {
-      if (quantity <= 0) {
-        await api.removeFromCart(cartId);
-      } else {
-        await api.updateCartQuantity(cartId, quantity);
-      }
-      const updatedCart = await api.getCart(selectedCustomer.Customer_ID);
-      setCart(updatedCart);
-    } catch (err: any) {
-      console.error('Cart quantity update error:', err);
-    }
-  };
-
-  const handleRemoveFromCart = async (cartId: string) => {
-    if (!selectedCustomer) return;
-    try {
-      await api.removeFromCart(cartId);
-      const updatedCart = await api.getCart(selectedCustomer.Customer_ID);
-      setCart(updatedCart);
-    } catch (err: any) {
-      console.error('Remove from cart error:', err);
-    }
-  };
-
-  // Order Placement
-  const handlePlaceOrder = async (orderData: any) => {
-    if (!selectedCustomer) {
-      setIsLoginModalOpen(true);
-      throw new Error('Please sign in to place order');
-    }
-    const newOrder = await api.createOrder(orderData);
-    setOrders((prev) => [newOrder, ...prev]);
-    const [updatedCart, updatedProds] = await Promise.all([
-      api.getCart(selectedCustomer.Customer_ID),
-      api.getProducts(),
-    ]);
-    setCart(updatedCart);
-    setProducts(updatedProds);
-    return newOrder;
-  };
-
-  // Review Submission
-  const handleSubmitReview = async (productId: string, rating: number, reviewText: string) => {
-    if (!isLoggedIn || !selectedCustomer) {
-      setIsLoginModalOpen(true);
-      return;
-    }
-    const newRev = await api.createReview({
-      Product_ID: productId,
-      Customer_ID: selectedCustomer.Customer_ID,
-      Customer_Name: selectedCustomer.Name,
-      Review_text: reviewText,
-      Rating: rating,
-    });
-    setReviews((prev) => [newRev, ...prev]);
-  };
-
-  // Customer Profile update
-  const handleUpdateCustomer = async (updated: Customer) => {
-    try {
-      await api.updateCustomer(updated.Customer_ID, updated);
-      setSelectedCustomer(updated);
-      setCustomers((prev) => prev.map((c) => (c.Customer_ID === updated.Customer_ID ? updated : c)));
-    } catch (err: any) {
-      alert(err.message || 'Failed to update profile');
-    }
-  };
-
-  // Product CRUD (Seller)
-  const handleSaveProduct = async (data: Partial<Product>) => {
-    if (data.Product_ID) {
-      await api.updateProduct(data.Product_ID, data);
-      const updatedList = await api.getProducts();
-      setProducts(updatedList);
-    } else {
-      const created = await api.createProduct(data);
-      setProducts((prev) => [created, ...prev]);
-    }
-  };
-
-  const handleDeleteProduct = async (productId: string) => {
-    await api.deleteProduct(productId);
-    setProducts((prev) => prev.filter((p) => p.Product_ID !== productId));
-  };
-
-  const handleUpdateProductStatus = async (productId: string, status: ProductStatus) => {
-    await api.updateProductStatus(productId, status);
-    const updatedList = await api.getProducts();
-    setProducts(updatedList);
-  };
-
-  // Order Status update (Seller)
-  const handleUpdateOrderStatus = async (orderId: string, status: string) => {
-    await api.updateOrderStatus(orderId, status);
-    const updatedOrders = await api.getOrders();
-    setOrders(updatedOrders);
-  };
-
-  // Admin Seller Governance
-  const handleUpdateSellerStatus = async (sellerId: string, status: SellerStatus) => {
-    await api.updateSellerStatus(sellerId, status);
-    const updatedSellers = await api.getSellers();
-    setSellers(updatedSellers);
-    if (selectedSeller && selectedSeller.Seller_ID === sellerId) {
-      const refreshedSeller = updatedSellers.find((s) => s.Seller_ID === sellerId);
-      if (refreshedSeller) setSelectedSeller(refreshedSeller);
-    }
-  };
-
-  // Category CRUD (Admin)
-  const handleCreateCategory = async (name: string) => {
-    const created = await api.createCategory(name);
-    setCategories((prev) => [...prev, created]);
-  };
-
-  const handleUpdateCategory = async (id: string, name: string) => {
-    const updated = await api.updateCategory(id, name);
-    setCategories((prev) => prev.map((c) => (c.Category_ID === updated.Category_ID ? updated : c)));
-  };
-
-  const handleDeleteCategory = async (id: string) => {
-    await api.deleteCategory(id);
-    setCategories((prev) => prev.filter((c) => c.Category_ID !== id));
-  };
-
-  // New Customer Registration
-  const handleRegisterCustomer = async (customerData: Partial<Customer> & { Username?: string }): Promise<Customer> => {
-    const newCustomer = await api.createCustomer(customerData);
-    handleLoginSuccess('customer', newCustomer);
-    return newCustomer;
-  };
-
-  // New Seller Registration
-  const handleRegisterSeller = async (sellerData: Partial<Seller> & { Username?: string }): Promise<Seller> => {
-    const newSeller = await api.createSeller(sellerData);
-    setSellers((prev) => [newSeller, ...prev]);
-    handleLoginSuccess('seller', newSeller);
-    return newSeller;
-  };
-
-  // Additional administrators can only be created from an existing admin session.
-  const handleRegisterAdmin = async (adminData: Partial<Admin> & { Username?: string }): Promise<Admin> => {
-    const newAdmin = await api.createAdmin(adminData);
-    setAdmins((prev) => [...prev, newAdmin]);
-    return newAdmin;
-  };
-
-  // Get active user entity
-  const currentUserEntity =
-    currentRole === 'customer'
-      ? selectedCustomer
-      : currentRole === 'seller'
-      ? selectedSeller
-      : selectedAdmin;
-
-  const defaultAdmin = selectedAdmin || (admins.length > 0 ? admins[0] : {
+  const currentCustomer = auth.currentRole === 'customer' ? auth.currentUser as Customer | null : null;
+  const currentSeller = auth.currentRole === 'seller' ? auth.currentUser as Seller | null : null;
+  const currentAdmin = auth.currentRole === 'admin' ? auth.currentUser as Admin | null : null;
+  const defaultAdmin: Admin = market.admins[0] || {
     Admin_ID: 'ADM-1',
     Name: 'Sarah Jenkins (Admin)',
     Email: 'admin@marketplace.com',
@@ -400,9 +101,108 @@ export default function App() {
       City: 'San Jose',
       Postal_Code: '95113',
     },
-  });
+  };
 
-  if (isLoading) {
+  const handleLoginSuccess = (role: UserRole, entity: Customer | Seller | Admin) => {
+    auth.login(role, entity);
+    setActiveTab(role === 'customer' ? 'storefront' : role === 'seller' ? 'seller-dashboard' : 'admin-dashboard');
+    setViewMode('app');
+  };
+
+  const handleLogout = () => {
+    auth.logout();
+    setActiveTab('storefront');
+    setModalState((previous) => ({ ...previous, cart: false, checkout: false }));
+  };
+
+  const validateAuthForPage = async (tab: NavigationTab): Promise<boolean> => {
+    const requiredRole = protectedTabRoles[tab];
+    if (!getAuthToken()) {
+      if (requiredRole) setModalOpen('login', true);
+      return !requiredRole;
+    }
+
+    try {
+      const result = await api.getCurrentUser();
+      const user = result.user;
+      const hasRoleEntity = user && (
+        (user.role === 'customer' && Boolean((user.entity as Customer)?.Customer_ID)) ||
+        (user.role === 'seller' && Boolean((user.entity as Seller)?.Seller_ID)) ||
+        (user.role === 'admin' && Boolean((user.entity as Admin)?.Admin_ID))
+      );
+      if (!result.authenticated || !user || !hasRoleEntity || (requiredRole && user.role !== requiredRole)) {
+        setModalOpen('login', true);
+        return false;
+      }
+      return true;
+    } catch {
+      setModalOpen('login', true);
+      return false;
+    }
+  };
+
+  const handleTabChange = async (tab: NavigationTab) => {
+    if (await validateAuthForPage(tab)) setActiveTab(tab);
+  };
+
+  const handleAddToCart = async (product: Product, quantity = 1) => {
+    if (!auth.isLoggedIn || !currentCustomer) {
+      setModalOpen('login', true);
+      return;
+    }
+    try {
+      await cart.addToCart(product, quantity);
+      setModalOpen('cart', true);
+    } catch (error: any) {
+      alert(error.message || 'Failed to add item to cart');
+    }
+  };
+
+  const handleUpdateCartQuantity = async (cartId: string, quantity: number) => {
+    try {
+      await cart.updateQuantity(cartId, quantity);
+    } catch (error) {
+      console.error('Cart quantity update error:', error);
+    }
+  };
+
+  const handleRemoveCartItem = async (cartId: string) => {
+    try {
+      await cart.removeFromCart(cartId);
+    } catch (error) {
+      console.error('Remove from cart error:', error);
+    }
+  };
+
+  const handleSubmitReview = async (productId: string, rating: number, reviewText: string) => {
+    if (!auth.isLoggedIn || !currentCustomer) {
+      setModalOpen('login', true);
+      return;
+    }
+    await market.handleSubmitReview(productId, rating, reviewText);
+  };
+
+  const handlePlaceOrder = async (orderData: {
+    Customer_ID: string;
+    Items: any[];
+    Shipping_Address: Customer['Address'];
+    Billing_Address: Customer['Address'];
+    Subtotal: number;
+    Shipping_Fee: number;
+    Additional_Info?: string;
+  }) => {
+    if (!currentCustomer) {
+      setModalOpen('login', true);
+      throw new Error('Please sign in to place order');
+    }
+    return market.handlePlaceOrder(orderData);
+  };
+
+  const handleNavigateHome = async () => {
+    if (await validateAuthForPage(activeTab)) setViewMode('landing');
+  };
+
+  if (auth.isLoading || market.isLoading) {
     return (
       <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center space-y-4">
         <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin" />
@@ -411,266 +211,147 @@ export default function App() {
     );
   }
 
-  // Render Landing Page
-  if (viewMode === 'landing') {
-    return (
-      <>
+  return (
+    <>
+      {viewMode === 'landing' ? (
         <LandingPage
-          customers={customers}
-          sellers={sellers}
+          customers={market.customers}
+          sellers={market.sellers}
           admin={defaultAdmin}
-          admins={admins}
+          admins={market.admins}
           dbStatus={{ connected: true, provider: 'Raw SQL Database Engine', database: 'marketpulse_db' }}
-          onOpenLogin={() => setIsLoginModalOpen(true)}
+          onOpenLogin={() => setModalOpen('login', true)}
           onEnterAsGuest={() => {
             setViewMode('app');
             setActiveTab('storefront');
           }}
-          onOpenCustomerSignup={() => setIsCustomerRegistrationOpen(true)}
-          onOpenSellerSignup={() => setIsSellerRegistrationOpen(true)}
-          onOpenAdminSignup={isLoggedIn && currentRole === 'admin' ? () => setIsAdminRegistrationOpen(true) : undefined}
+          onOpenCustomerSignup={() => setModalOpen('customerSignup', true)}
+          onOpenSellerSignup={() => setModalOpen('sellerSignup', true)}
+          onOpenAdminSignup={auth.isLoggedIn && auth.currentRole === 'admin' ? () => setModalOpen('adminSignup', true) : undefined}
           theme={theme}
           onToggleTheme={toggleTheme}
         />
-
-        <CustomerSignupModal
-          isOpen={isCustomerRegistrationOpen}
-          onClose={() => setIsCustomerRegistrationOpen(false)}
-          onRegisterCustomer={handleRegisterCustomer}
-          onSuccessRegistered={(newCustomer) => {
-            setSelectedCustomer(newCustomer);
-            setIsLoggedIn(true);
-            setCurrentRole('customer');
-            setActiveTab('storefront');
-            setViewMode('app');
+      ) : (
+        <MainLayout
+          isLoggedIn={auth.isLoggedIn}
+          currentRole={auth.currentRole}
+          currentCustomer={currentCustomer}
+          currentSeller={currentSeller}
+          admin={currentAdmin}
+          activeTab={activeTab}
+          setActiveTab={(tab) => { void handleTabChange(tab); }}
+          cartCount={cart.cart.reduce((sum, item) => sum + item.Quantity, 0)}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          onOpenCart={() => {
+            if (!currentCustomer) setModalOpen('login', true);
+            else setModalOpen('cart', true);
           }}
-        />
-
-        <SellerSignupModal
-          isOpen={isSellerRegistrationOpen}
-          onClose={() => setIsSellerRegistrationOpen(false)}
-          onRegisterSeller={handleRegisterSeller}
-          onSuccessRegistered={(newSeller) => {
-            setSelectedSeller(newSeller);
-            setIsLoggedIn(true);
-            setCurrentRole('seller');
-            setActiveTab('seller-dashboard');
-            setViewMode('app');
-          }}
-        />
-
-        <AdminSignupModal
-          isOpen={isAdminRegistrationOpen}
-          onClose={() => setIsAdminRegistrationOpen(false)}
-          onRegisterAdmin={handleRegisterAdmin}
-          onSuccessRegistered={() => undefined}
-        />
-
-        <LoginModal
-          isOpen={isLoginModalOpen}
-          onClose={() => setIsLoginModalOpen(false)}
-          onLoginSuccess={handleLoginSuccess}
-        />
-      </>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-zinc-100 font-sans flex flex-col antialiased transition-colors duration-200">
-      {/* Top Bar with Landing option & Raw SQL status */}
-      <div className="bg-white dark:bg-zinc-950 border-b border-slate-200 dark:border-zinc-800/80 px-4 py-1.5 flex items-center justify-between text-xs text-slate-600 dark:text-zinc-400">
-        <button
-          onClick={() => setViewMode('landing')}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-indigo-600 dark:text-indigo-400 font-semibold border border-slate-200 dark:border-zinc-800 transition-colors cursor-pointer"
+          onOpenLogin={() => setModalOpen('login', true)}
+          onLogout={handleLogout}
+          onOpenCustomerSignup={() => setModalOpen('customerSignup', true)}
+          onOpenSellerSignup={() => setModalOpen('sellerSignup', true)}
+          onOpenAdminSignup={auth.currentRole === 'admin' ? () => setModalOpen('adminSignup', true) : undefined}
+          onNavigateHome={() => { void handleNavigateHome(); }}
         >
-          <LayoutGrid className="w-3.5 h-3.5" />
-          <span>Home / Portal Landing</span>
-        </button>
+          {activeTab === 'storefront' && (
+            <Storefront
+              products={market.products}
+              categories={market.categories}
+              sellers={market.sellers}
+              reviews={market.reviews}
+              onSelectProduct={setSelectedProduct}
+              onAddToCart={handleAddToCart}
+            />
+          )}
 
-        <div className="flex items-center gap-2">
-          <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-            <Database className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Raw SQL Mode</span>
-          </span>
-        </div>
-      </div>
+          {activeTab === 'orders' && (
+            <AuthenticationGuard authorized={auth.isLoggedIn && auth.currentRole === 'customer' && Boolean(currentCustomer?.Customer_ID)} onRequestLogin={() => setModalOpen('login', true)}>
+              {currentCustomer && <CustomerOrders currentCustomer={currentCustomer} orders={market.orders} />}
+            </AuthenticationGuard>
+          )}
 
-      {/* Role Switcher Bar - Notice: In-profile switching is REMOVED when logged in! */}
-      <RoleSwitcher
-        isLoggedIn={isLoggedIn}
-        currentRole={currentRole}
-        currentUserEntity={currentUserEntity}
-        onOpenCustomerSignup={() => setIsCustomerRegistrationOpen(true)}
-        onOpenSellerSignup={() => setIsSellerRegistrationOpen(true)}
-        onOpenAdminSignup={() => setIsAdminRegistrationOpen(true)}
-        onOpenLogin={() => setIsLoginModalOpen(true)}
-        onLogout={handleLogout}
-      />
+          {activeTab === 'profile' && (
+            <AuthenticationGuard authorized={auth.isLoggedIn && auth.currentRole === 'customer' && Boolean(currentCustomer?.Customer_ID)} onRequestLogin={() => setModalOpen('login', true)}>
+              {currentCustomer && <CustomerProfile currentCustomer={currentCustomer} onUpdateCustomer={market.handleUpdateCustomer} />}
+            </AuthenticationGuard>
+          )}
 
-      {/* Main Header & Navbar */}
-      <Navbar
-        isLoggedIn={isLoggedIn}
-        currentRole={currentRole}
-        currentCustomer={selectedCustomer}
-        currentSeller={selectedSeller}
-        admin={selectedAdmin}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        cartCount={cart.reduce((sum, item) => sum + item.Quantity, 0)}
-        onOpenCart={() => {
-          if (!isLoggedIn || !selectedCustomer) {
-            setIsLoginModalOpen(true);
-          } else {
-            setIsCartOpen(true);
-          }
-        }}
-        onOpenLogin={() => setIsLoginModalOpen(true)}
-        onLogout={handleLogout}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-      />
+          {activeTab === 'seller-dashboard' && (
+            <AuthenticationGuard authorized={auth.isLoggedIn && auth.currentRole === 'seller' && Boolean(currentSeller?.Seller_ID)} onRequestLogin={() => setModalOpen('login', true)}>
+              {currentSeller && (
+                <SellerDashboard
+                  currentSeller={currentSeller}
+                  products={market.products}
+                  categories={market.categories}
+                  orders={market.orders}
+                  reviews={market.reviews}
+                  onSaveProduct={market.handleSaveProduct}
+                  onDeleteProduct={market.handleDeleteProduct}
+                  onUpdateProductStatus={(id, status: ProductStatus) => market.handleUpdateProductStatus(id, status)}
+                  onUpdateOrderStatus={market.handleUpdateOrderStatus}
+                />
+              )}
+            </AuthenticationGuard>
+          )}
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-16">
-        {/* Storefront Tab */}
-        {activeTab === 'storefront' && (
-          <Storefront
-            products={products}
-            categories={categories}
-            sellers={sellers}
-            reviews={reviews}
-            onSelectProduct={(p) => setSelectedProductForDetail(p)}
-            onAddToCart={handleAddToCart}
-          />
-        )}
+          {activeTab === 'admin-dashboard' && (
+            <AuthenticationGuard authorized={auth.isLoggedIn && auth.currentRole === 'admin' && Boolean(currentAdmin?.Admin_ID)} onRequestLogin={() => setModalOpen('login', true)}>
+              <AdminDashboard
+                sellers={market.sellers}
+                products={market.products}
+                orders={market.orders}
+                categories={market.categories}
+                reviews={market.reviews}
+                onUpdateSellerStatus={(id, status: SellerStatus) => market.handleUpdateSellerStatus(id, status)}
+                onUpdateProductStatus={(id, status: ProductStatus) => market.handleUpdateProductStatus(id, status)}
+                onCreateCategory={market.handleCreateCategory}
+                onUpdateCategory={market.handleUpdateCategory}
+                onDeleteCategory={market.handleDeleteCategory}
+                onOpenSellerSignup={() => setModalOpen('sellerSignup', true)}
+              />
+            </AuthenticationGuard>
+          )}
+        </MainLayout>
+      )}
 
-        {/* Customer Orders Tab */}
-        {activeTab === 'orders' && selectedCustomer && (
-          <CustomerOrders currentCustomer={selectedCustomer} orders={orders} />
-        )}
-
-        {/* Customer Profile Tab */}
-        {activeTab === 'profile' && selectedCustomer && (
-          <CustomerProfile
-            currentCustomer={selectedCustomer}
-            onUpdateCustomer={handleUpdateCustomer}
-          />
-        )}
-
-        {/* Seller Dashboard Tab */}
-        {activeTab === 'seller-dashboard' && selectedSeller && (
-          <SellerDashboard
-            currentSeller={selectedSeller}
-            products={products}
-            categories={categories}
-            orders={orders}
-            reviews={reviews}
-            onSaveProduct={handleSaveProduct}
-            onDeleteProduct={handleDeleteProduct}
-            onUpdateProductStatus={handleUpdateProductStatus}
-            onUpdateOrderStatus={handleUpdateOrderStatus}
-          />
-        )}
-
-        {/* Admin Dashboard Tab */}
-        {activeTab === 'admin-dashboard' && (
-          <AdminDashboard
-            sellers={sellers}
-            products={products}
-            orders={orders}
-            categories={categories}
-            reviews={reviews}
-            onUpdateSellerStatus={handleUpdateSellerStatus}
-            onUpdateProductStatus={handleUpdateProductStatus}
-            onCreateCategory={handleCreateCategory}
-            onUpdateCategory={handleUpdateCategory}
-            onDeleteCategory={handleDeleteCategory}
-            onOpenSellerSignup={() => setIsSellerRegistrationOpen(true)}
-          />
-        )}
-      </main>
-
-      {/* Product Detail Modal */}
-      <ProductDetailModal
-        product={selectedProductForDetail}
-        category={categories.find((c) => c.Category_ID === selectedProductForDetail?.Category_ID)}
-        seller={sellers.find((s) => s.Seller_ID === selectedProductForDetail?.Seller_ID)}
-        reviews={reviews}
-        currentCustomer={selectedCustomer || null}
-        onClose={() => setSelectedProductForDetail(null)}
+      <AppModals
+        modalState={modalState}
+        setModalOpen={setModalOpen}
+        isAppView={viewMode === 'app'}
+        selectedProduct={selectedProduct}
+        onClearSelectedProduct={() => setSelectedProduct(null)}
+        categories={market.categories}
+        sellers={market.sellers}
+        reviews={market.reviews}
+        currentCustomer={currentCustomer}
+        cart={cart.cart}
         onAddToCart={handleAddToCart}
         onSubmitReview={handleSubmitReview}
-        onOpenLogin={() => setIsLoginModalOpen(true)}
-      />
-
-      {/* Cart Drawer */}
-      {selectedCustomer && (
-        <CartDrawer
-          isOpen={isCartOpen}
-          onClose={() => setIsCartOpen(false)}
-          cartItems={cart}
-          onUpdateQuantity={handleUpdateCartQuantity}
-          onRemoveItem={handleRemoveFromCart}
-          onCheckout={() => setIsCheckoutOpen(true)}
-        />
-      )}
-
-      {/* Checkout Modal */}
-      {selectedCustomer && (
-        <CheckoutModal
-          isOpen={isCheckoutOpen}
-          onClose={() => setIsCheckoutOpen(false)}
-          currentCustomer={selectedCustomer}
-          cartItems={cart}
-          onPlaceOrder={handlePlaceOrder}
-          onOrderSuccess={() => {
-            setActiveTab('orders');
-          }}
-        />
-      )}
-
-      {/* Customer Signup Modal */}
-      <CustomerSignupModal
-        isOpen={isCustomerRegistrationOpen}
-        onClose={() => setIsCustomerRegistrationOpen(false)}
-        onRegisterCustomer={handleRegisterCustomer}
-        onSuccessRegistered={(newCustomer) => {
-          setSelectedCustomer(newCustomer);
-          setIsLoggedIn(true);
-          setCurrentRole('customer');
-          setActiveTab('storefront');
-          setViewMode('app');
+        onUpdateCartQuantity={(id, quantity) => { void handleUpdateCartQuantity(id, quantity); }}
+        onRemoveCartItem={(id) => { void handleRemoveCartItem(id); }}
+        onPlaceOrder={handlePlaceOrder}
+        onOrderSuccess={() => {
+          setModalOpen('checkout', false);
+          void handleTabChange('orders');
         }}
-      />
-
-      {/* Seller Signup Modal */}
-      <SellerSignupModal
-        isOpen={isSellerRegistrationOpen}
-        onClose={() => setIsSellerRegistrationOpen(false)}
-        onRegisterSeller={handleRegisterSeller}
-        onSuccessRegistered={(newSeller) => {
-          setSelectedSeller(newSeller);
-          setIsLoggedIn(true);
-          setCurrentRole('seller');
-          setActiveTab('seller-dashboard');
-          setViewMode('app');
-        }}
-      />
-
-      {/* Admin Signup Modal */}
-      <AdminSignupModal
-        isOpen={isAdminRegistrationOpen}
-        onClose={() => setIsAdminRegistrationOpen(false)}
-        onRegisterAdmin={handleRegisterAdmin}
-        onSuccessRegistered={() => undefined}
-      />
-
-      {/* Login Modal with Username & Password */}
-      <LoginModal
-        isOpen={isLoginModalOpen}
-        onClose={() => setIsLoginModalOpen(false)}
+        onRegisterCustomer={market.handleRegisterCustomer}
+        onRegisterSeller={market.handleRegisterSeller}
+        onRegisterAdmin={market.handleRegisterAdmin}
+        onCustomerRegistered={(customer) => handleLoginSuccess('customer', customer)}
+        onSellerRegistered={(seller) => handleLoginSuccess('seller', seller)}
         onLoginSuccess={handleLoginSuccess}
       />
-    </div>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

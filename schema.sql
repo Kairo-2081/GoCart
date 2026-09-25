@@ -128,6 +128,20 @@ CREATE TABLE IF NOT EXISTS reviews (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE OR REPLACE FUNCTION update_product_review_id()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE products SET review_id = NEW.id WHERE id = NEW.product_id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_update_product_review_id ON reviews;
+CREATE TRIGGER trg_update_product_review_id
+AFTER INSERT ON reviews
+FOR EACH ROW
+EXECUTE FUNCTION update_product_review_id();
+
 -- 3. INDEXES FOR PERFORMANCE OPTIMIZATION
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -253,3 +267,51 @@ ALTER TABLE orders
 ALTER TABLE reviews
     DROP CONSTRAINT IF EXISTS chk_reviews_rating,
     ADD CONSTRAINT chk_reviews_rating CHECK (rating >= 1 AND rating <= 5);
+
+-- Audit seller approval status changes.
+CREATE TABLE IF NOT EXISTS seller_status_audit (
+    audit_id SERIAL PRIMARY KEY,
+    seller_id VARCHAR(64) NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+    old_status VARCHAR(32),
+    new_status VARCHAR(32),
+    changed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE OR REPLACE FUNCTION log_seller_status_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD.status IS DISTINCT FROM NEW.status THEN
+        INSERT INTO seller_status_audit (seller_id, old_status, new_status)
+        VALUES (NEW.id, OLD.status, NEW.status);
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_seller_status_change ON sellers;
+CREATE TRIGGER trigger_seller_status_change
+AFTER UPDATE ON sellers
+FOR EACH ROW
+EXECUTE FUNCTION log_seller_status_change();
+
+-- Reject products owned by sellers who are not approved.
+CREATE OR REPLACE FUNCTION validate_product_seller()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_seller_status VARCHAR(32);
+BEGIN
+    SELECT status INTO v_seller_status FROM sellers WHERE id = NEW.seller_id;
+
+    IF v_seller_status IS DISTINCT FROM 'approved' THEN
+        RAISE EXCEPTION 'Data Validation Failed: Cannot insert or update product. Seller % is currently %.', NEW.seller_id, v_seller_status;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_validate_product_seller ON products;
+CREATE TRIGGER trigger_validate_product_seller
+BEFORE INSERT OR UPDATE ON products
+FOR EACH ROW
+EXECUTE FUNCTION validate_product_seller();

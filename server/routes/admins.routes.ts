@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { query } from '../db/index.ts';
+import { query, withTransaction } from '../db/index.ts';
 import { hashPassword } from '../db/password.ts';
 import { seedDatabaseIfEmpty } from '../db/seed.ts';
 import { mapAddress } from '../utils.ts';
@@ -35,16 +35,18 @@ router.post('/api/admins', requireRole('admin'), async (req, res) => {
     const city = addr.City || '';
     const postalCode = addr.Postal_Code || '';
     const addInfo = addr.Additional_Info || '';
-    await query(
-      `INSERT INTO admins (id, username, name, email, password, number, address_house_name, address_street, address_city, address_postal_code, address_additional_info, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)`,
-      [id, username, name, email, hashedPassword, phone, houseName, street, city, postalCode, addInfo]
-    );
-    await query(
-      `INSERT INTO users (id, username, password, email, role, entity_id, created_at)
-       VALUES ($1, $2, $3, $4, 'admin', $5, CURRENT_TIMESTAMP)`,
-      [`USR-${id}`, username, hashedPassword, email, id]
-    );
+    await withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO admins (id, username, name, email, password, number, address_house_name, address_street, address_city, address_postal_code, address_additional_info, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)`,
+        [id, username, name, email, hashedPassword, phone, houseName, street, city, postalCode, addInfo]
+      );
+      await client.query(
+        `INSERT INTO users (id, username, password, email, role, entity_id, created_at)
+         VALUES ($1, $2, $3, $4, 'admin', $5, CURRENT_TIMESTAMP)`,
+        [`USR-${id}`, username, hashedPassword, email, id]
+      );
+    });
     const entity = {
       Admin_ID: id, Username: username, Name: name, Email: email, Number: phone,
       Address: { House_Name: houseName, Street: street, City: city, Postal_Code: postalCode, Additional_Info: addInfo },

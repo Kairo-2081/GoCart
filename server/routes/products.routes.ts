@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { query } from '../db/index.ts';
+import { query, withTransaction } from '../db/index.ts';
 import { optionalAuth, requireRole, type AuthRequest } from '../middleware/auth.ts';
 import type { Product } from '../../src/types.ts';
 
@@ -50,11 +50,11 @@ router.post('/api/products', requireRole('seller', 'admin'), async (req: AuthReq
     const prodStat = Product_Status || 'active';
     if (!Number.isFinite(priceNum) || priceNum < 0 || !Number.isInteger(stockNum) || stockNum < 0) return res.status(400).json({ error: 'Price and stock must be valid non-negative values' });
     if (!['active', 'inactive', 'deactivated'].includes(prodStat)) return res.status(400).json({ error: 'Invalid product status' });
-    await query(
+    await withTransaction((client) => client.query(
       `INSERT INTO products (id, name, image, description, price, voucher, stock, product_status, category_id, seller_id, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)`,
       [id, Name, img, desc, priceNum, vouch, stockNum, prodStat, Category_ID, sellerId]
-    );
+    ));
     const newProd: Product = { Product_ID: id, Name, Image: img, Description: desc, Price: priceNum, Voucher: vouch, Stock: stockNum, Product_Status: prodStat as any, Category_ID, Seller_ID: sellerId };
     res.status(201).json(newProd);
   } catch (error: any) {
@@ -79,11 +79,11 @@ router.put('/api/products/:id', requireRole('seller', 'admin'), async (req: Auth
     const productStatus = req.body.Product_Status ?? current.product_status;
     const categoryId = req.body.Category_ID ?? current.category_id;
     if (!Number.isFinite(price) || price < 0 || !Number.isInteger(stock) || stock < 0 || !['active', 'inactive', 'deactivated'].includes(productStatus)) return res.status(400).json({ error: 'Invalid product values' });
-    await query(
+    await withTransaction((client) => client.query(
       `UPDATE products SET name = $1, image = $2, description = $3, price = $4, voucher = $5,
        stock = $6, product_status = $7, category_id = $8 WHERE id = $9`,
       [name, image, description, price, voucher, stock, productStatus, categoryId, id]
-    );
+    ));
     res.json({ Product_ID: id, Name: name, Image: image, Description: description, Price: price, Voucher: voucher, Stock: stock, Product_Status: productStatus, Category_ID: categoryId, Seller_ID: current.seller_id, Review_ID: current.review_id || undefined });
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to update product' });
@@ -98,7 +98,7 @@ router.put('/api/products/:id/status', requireRole('seller', 'admin'), async (re
     const result = await query(`SELECT seller_id FROM products WHERE id = $1`, [id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Product not found' });
     if (req.user!.role === 'seller' && (result.rows[0] as any).seller_id !== req.user!.sub) return res.status(403).json({ error: 'You may only update your own products' });
-    await query(`UPDATE products SET product_status = $1 WHERE id = $2`, [Product_Status, id]);
+    await withTransaction((client) => client.query(`UPDATE products SET product_status = $1 WHERE id = $2`, [Product_Status, id]));
     res.json({ success: true, id, Product_Status });
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to update product' });
@@ -111,7 +111,7 @@ router.delete('/api/products/:id', requireRole('seller', 'admin'), async (req: A
     const existing = await query(`SELECT seller_id FROM products WHERE id = $1`, [id]);
     if (!existing.rows.length) return res.status(404).json({ error: 'Product not found' });
     if (req.user!.role === 'seller' && (existing.rows[0] as any).seller_id !== req.user!.sub) return res.status(403).json({ error: 'You may only delete your own products' });
-    await query(`DELETE FROM products WHERE id = $1`, [id]);
+    await withTransaction((client) => client.query(`DELETE FROM products WHERE id = $1`, [id]));
     res.json({ success: true, message: 'Product deleted' });
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to delete product' });

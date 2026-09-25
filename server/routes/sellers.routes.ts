@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { query } from '../db/index.ts';
+import { query, withTransaction } from '../db/index.ts';
 import { hashPassword } from '../db/password.ts';
 import { mapAddress } from '../utils.ts';
 import { issueAppToken, requireRole, TOKEN_TTL_SECONDS } from '../middleware/auth.ts';
@@ -41,16 +41,18 @@ router.post('/api/sellers', async (req, res) => {
     const addInfo = addr.Additional_Info || '';
     const email = String(Email).trim();
 
-    await query(
-      `INSERT INTO sellers (id, username, name, email, password, number, logo, description, status, address_house_name, address_street, address_city, address_postal_code, address_additional_info, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)`,
-      [id, username, Name.trim(), email, hashedPassword, phone, logoUrl, desc, houseName, street, city, postalCode, addInfo]
-    );
-    await query(
-      `INSERT INTO users (id, username, password, email, role, entity_id, created_at)
-       VALUES ($1, $2, $3, $4, 'seller', $5, CURRENT_TIMESTAMP)`,
-      [`USR-${id}`, username, hashedPassword, email, id]
-    );
+    await withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO sellers (id, username, name, email, password, number, logo, description, status, address_house_name, address_street, address_city, address_postal_code, address_additional_info, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)`,
+        [id, username, Name.trim(), email, hashedPassword, phone, logoUrl, desc, houseName, street, city, postalCode, addInfo]
+      );
+      await client.query(
+        `INSERT INTO users (id, username, password, email, role, entity_id, created_at)
+         VALUES ($1, $2, $3, $4, 'seller', $5, CURRENT_TIMESTAMP)`,
+        [`USR-${id}`, username, hashedPassword, email, id]
+      );
+    });
     const entity: Seller = {
       Seller_ID: id, Username: username, Name: Name.trim(), Email: email, Number: phone,
       Address: { House_Name: houseName, Street: street, City: city, Postal_Code: postalCode, Additional_Info: addInfo },
@@ -69,7 +71,7 @@ router.put('/api/sellers/:id/status', requireRole('admin'), async (req, res) => 
     const { id } = req.params;
     const { Status } = req.body;
     if (!['pending', 'approved', 'rejected', 'suspended'].includes(Status)) return res.status(400).json({ error: 'Invalid seller status' });
-    const result = await query(`UPDATE sellers SET status = $1 WHERE id = $2 RETURNING *`, [Status, id]);
+    const result = await withTransaction((client) => client.query(`UPDATE sellers SET status = $1 WHERE id = $2 RETURNING *`, [Status, id]));
     if (!result.rows.length) return res.status(404).json({ error: 'Seller not found' });
     const s: any = result.rows[0];
     res.json({
