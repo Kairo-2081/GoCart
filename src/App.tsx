@@ -12,7 +12,7 @@ import {
   SellerStatus,
   ProductStatus,
 } from './types';
-import { api, db } from './lib/api';
+import { api, db, getAuthToken } from './lib/api';
 import { LandingPage } from './components/LandingPage';
 import { Navbar, NavigationTab } from './components/Navbar';
 import { RoleSwitcher } from './components/RoleSwitcher';
@@ -89,37 +89,79 @@ export default function App() {
   const [isAdminSecurityModalOpen, setIsAdminSecurityModalOpen] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
 
-  // Load all data from Raw SQL Database Engine
+  // Load public storefront data for guests and signed-in users.
   const loadInitialData = React.useCallback(async () => {
-    setIsLoading(true);
     try {
-      const [cats, sels, prods, custs, ords, revs, fetchedAdmins] = await Promise.all([
-        api.getCategories(),
-        api.getSellers(),
-        api.getProducts(),
-        api.getCustomers(),
-        api.getOrders(),
-        api.getReviews(),
-        api.getAdmins(),
+      const [cats, sels, prods, revs] = await Promise.all([
+        api.getCategories(), api.getSellers(), api.getProducts(), api.getReviews(),
       ]);
-
       setCategories(cats);
       setSellers(sels);
       setProducts(prods);
-      setCustomers(custs);
-      setOrders(ords);
       setReviews(revs);
-      setAdmins(fetchedAdmins);
     } catch (err) {
-      console.error('Failed to load raw SQL data:', err);
-    } finally {
-      setIsLoading(false);
+      console.error('Failed to load public catalog data:', err);
+    }
+  }, []);
+
+  const loadRoleData = React.useCallback(async (role: UserRole, entity: any) => {
+    try {
+      if (role === 'customer') {
+        const [customerCart, customerOrders] = await Promise.all([
+          api.getCart(entity.Customer_ID), api.getOrders({ customerId: entity.Customer_ID }),
+        ]);
+        setCart(customerCart);
+        setOrders(customerOrders);
+      } else if (role === 'seller') {
+        const [sellerProducts, sellerOrders] = await Promise.all([
+          api.getProducts({ sellerId: entity.Seller_ID }), api.getOrders({ sellerId: entity.Seller_ID }),
+        ]);
+        setProducts((current) => [...sellerProducts, ...current.filter((p) => !sellerProducts.some((sp) => sp.Product_ID === p.Product_ID))]);
+        setOrders(sellerOrders);
+        setCart([]);
+      } else {
+        const [allCustomers, allOrders, allAdmins, allProducts] = await Promise.all([
+          api.getCustomers(), api.getOrders(), api.getAdmins(), api.getProducts(),
+        ]);
+        setCustomers(allCustomers);
+        setOrders(allOrders);
+        setAdmins(allAdmins);
+        setProducts(allProducts);
+        setCart([]);
+      }
+    } catch (err) {
+      console.error(`Failed to load ${role} data:`, err);
     }
   }, []);
 
   React.useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+    let active = true;
+    const initialize = async () => {
+      setIsLoading(true);
+      try {
+        await loadInitialData();
+        if (!getAuthToken()) return;
+        const result = await api.getCurrentUser();
+        if (!active || !result.authenticated || !result.user) return;
+        const { role, entity } = result.user;
+        if (role === 'customer') setSelectedCustomer(entity as Customer);
+        else if (role === 'seller') setSelectedSeller(entity as Seller);
+        else setSelectedAdmin(entity as Admin);
+        setCurrentRole(role);
+        setIsLoggedIn(true);
+        setViewMode('app');
+        setActiveTab(role === 'customer' ? 'storefront' : role === 'seller' ? 'seller-dashboard' : 'admin-dashboard');
+        await loadRoleData(role, entity);
+      } catch (err) {
+        console.error('Failed to restore authentication:', err);
+        api.logout();
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    };
+    void initialize();
+    return () => { active = false; };
+  }, [loadInitialData, loadRoleData]);
 
   // Load customer cart when selectedCustomer changes
   React.useEffect(() => {
@@ -154,12 +196,13 @@ export default function App() {
       setSelectedSeller(null);
       setActiveTab('admin-dashboard');
     }
-
     setViewMode('app');
+    void loadRoleData(role, entity);
   };
 
-  // Handle Log Out: Cleanly resets authentication state
+  // Handle Log Out: clear the JWT and any role-private data.
   const handleLogout = () => {
+    api.logout();
     setIsLoggedIn(false);
     setSelectedCustomer(null);
     setSelectedSeller(null);
@@ -167,6 +210,10 @@ export default function App() {
     setCurrentRole('customer');
     setActiveTab('storefront');
     setCart([]);
+    setOrders([]);
+    setCustomers([]);
+    setAdmins([]);
+    void loadInitialData();
   };
 
   // Cart operations
@@ -315,36 +362,22 @@ export default function App() {
   // New Customer Registration
   const handleRegisterCustomer = async (customerData: Partial<Customer> & { Username?: string }): Promise<Customer> => {
     const newCustomer = await api.createCustomer(customerData);
-    setCustomers((prev) => [...prev, newCustomer]);
-    setSelectedCustomer(newCustomer);
-    setIsLoggedIn(true);
-    setCurrentRole('customer');
-    setActiveTab('storefront');
-    setViewMode('app');
+    handleLoginSuccess('customer', newCustomer);
     return newCustomer;
   };
 
   // New Seller Registration
   const handleRegisterSeller = async (sellerData: Partial<Seller> & { Username?: string }): Promise<Seller> => {
     const newSeller = await api.createSeller(sellerData);
-    setSellers((prev) => [...prev, newSeller]);
-    setSelectedSeller(newSeller);
-    setIsLoggedIn(true);
-    setCurrentRole('seller');
-    setActiveTab('seller-dashboard');
-    setViewMode('app');
+    setSellers((prev) => [newSeller, ...prev]);
+    handleLoginSuccess('seller', newSeller);
     return newSeller;
   };
 
-  // New Admin Registration
+  // Additional administrators can only be created from an existing admin session.
   const handleRegisterAdmin = async (adminData: Partial<Admin> & { Username?: string }): Promise<Admin> => {
     const newAdmin = await api.createAdmin(adminData);
     setAdmins((prev) => [...prev, newAdmin]);
-    setSelectedAdmin(newAdmin);
-    setIsLoggedIn(true);
-    setCurrentRole('admin');
-    setActiveTab('admin-dashboard');
-    setViewMode('app');
     return newAdmin;
   };
 
@@ -395,7 +428,7 @@ export default function App() {
           }}
           onOpenCustomerSignup={() => setIsCustomerRegistrationOpen(true)}
           onOpenSellerSignup={() => setIsSellerRegistrationOpen(true)}
-          onOpenAdminSignup={() => setIsAdminRegistrationOpen(true)}
+          onOpenAdminSignup={isLoggedIn && currentRole === 'admin' ? () => setIsAdminRegistrationOpen(true) : undefined}
           theme={theme}
           onToggleTheme={toggleTheme}
         />
@@ -430,13 +463,7 @@ export default function App() {
           isOpen={isAdminRegistrationOpen}
           onClose={() => setIsAdminRegistrationOpen(false)}
           onRegisterAdmin={handleRegisterAdmin}
-          onSuccessRegistered={(newAdmin) => {
-            setSelectedAdmin(newAdmin);
-            setIsLoggedIn(true);
-            setCurrentRole('admin');
-            setActiveTab('admin-dashboard');
-            setViewMode('app');
-          }}
+          onSuccessRegistered={() => undefined}
         />
 
         <LoginModal
@@ -635,13 +662,7 @@ export default function App() {
         isOpen={isAdminRegistrationOpen}
         onClose={() => setIsAdminRegistrationOpen(false)}
         onRegisterAdmin={handleRegisterAdmin}
-        onSuccessRegistered={(newAdmin) => {
-          setSelectedAdmin(newAdmin);
-          setIsLoggedIn(true);
-          setCurrentRole('admin');
-          setActiveTab('admin-dashboard');
-          setViewMode('app');
-        }}
+        onSuccessRegistered={() => undefined}
       />
 
       {/* Login Modal with Username & Password */}
