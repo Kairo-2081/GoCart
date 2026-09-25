@@ -1,14 +1,4 @@
--- 1. DROP EXISTING TABLES 
-DROP TABLE IF EXISTS cart_items CASCADE;
-DROP TABLE IF EXISTS cart CASCADE;
-DROP TABLE IF EXISTS reviews CASCADE;
-DROP TABLE IF EXISTS orders CASCADE;
-DROP TABLE IF EXISTS products CASCADE;
-DROP TABLE IF EXISTS categories CASCADE;
-DROP TABLE IF EXISTS admins CASCADE;
-DROP TABLE IF EXISTS sellers CASCADE;
-DROP TABLE IF EXISTS customers CASCADE;
-DROP TABLE IF EXISTS users CASCADE;
+-- Non-destructive application schema. Demo data is seeded separately with hashed passwords.
 
 -- USERS TABLE (Global Authentication & Identity)
 CREATE TABLE IF NOT EXISTS users (
@@ -155,76 +145,7 @@ CREATE INDEX IF NOT EXISTS idx_reviews_product ON reviews(product_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_customer ON reviews(customer_id);
 CREATE INDEX IF NOT EXISTS idx_cart_customer ON cart(customer_id);
 
--- 4. INITIAL SEED DATA
-
--- Categories
-INSERT INTO categories (id, name) VALUES
-('CAT-1', 'Electronics & Gadgets'),
-('CAT-2', 'Home & Living'),
-('CAT-3', 'Fashion & Apparel'),
-('CAT-4', 'Books & Stationery')
-ON CONFLICT (id) DO NOTHING;
-
--- Admin
-INSERT INTO admins (id, username, name, email, password, number, address_house_name, address_street, address_city, address_postal_code, address_additional_info) VALUES
-('ADM-1', 'admin', 'Fahim Shahriar (Admin)', 'admin@gocart.com', 'admin123', '+88017555-01949', 'HQ Tower Floor 15', '1 Marketplace Way', 'Dhaka', '9513', 'GoCart Operations Center')
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO users (id, username, password, email, role, entity_id, created_at) VALUES
-('USR-ADM-1', 'admin', 'admin123', 'admin@marketplace.com', 'admin', 'ADM-1', CURRENT_TIMESTAMP)
-ON CONFLICT (id) DO NOTHING;
-
--- Sellers
-INSERT INTO sellers (id, username, name, email, password, number, logo, description, status, address_house_name, address_street, address_city, address_postal_code, address_additional_info, created_at) VALUES
-('SEL-1', 'startech', 'Star Tech Solutions', 'contact@startech.io', 'seller123', '+8801790-124345', 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&auto=format&fit=crop&q=80', 'Pioneering cutting-edge audio, wearables, and personal computing hardware with premium warranties.', 'approved', 'Suite 400', '88 Green Way', 'Dhaka', '7871', 'Building B,  Dock 2', '2026-01-15 08:00:00+00'),
-('SEL-2', 'artisanhome', 'Artisan Home Krafts', 'hello@artisanhome.com', 'seller123', '+8801891-124345', 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=200&auto=format&fit=crop&q=80', 'Handcrafted ceramic stoneware, organic textiles, and sustainable home decor for modern spaces.', 'approved', 'Studio 12', '42 Craftsman Bhaban', 'Bhola', '9701', 'West Entrance', '2026-02-20 10:30:00+00'),
-('SEL-3', 'urbanthread', 'Urban Thread Studio', 'info@urbanthread.co', 'seller123', '+8801841-124345', 'https://images.unsplash.com/photo-1529374255404-311a2a4f1fd9?w=200&auto=format&fit=crop&q=80', 'Ethically manufactured organic apparel designed for urban active lifestyles.', 'pending', 'Loft 3A', '105 Sarobar', 'Dhaka', '7201', ' Elevator access', '2026-08-01 14:20:00+00')
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO users (id, username, password, email, role, entity_id, created_at) VALUES
-('USR-SEL-1', 'startech', 'seller123', 'contact@startech.io', 'seller', 'SEL-1', CURRENT_TIMESTAMP),
-('USR-SEL-2', 'artisanhome', 'seller123', 'hello@artisanhome.com', 'seller', 'SEL-2', CURRENT_TIMESTAMP),
-('USR-SEL-3', 'urbanthread', 'seller123', 'info@urbanthread.co', 'seller', 'SEL-3', CURRENT_TIMESTAMP)
-ON CONFLICT (id) DO NOTHING;
-
--- Customers
-INSERT INTO customers (id, username, name, email, password, number, address_house_name, address_street, address_city, address_postal_code, address_additional_info) VALUES
-('CUST-1', 'kairo', 'Kairo', 'kairo21@gmail.com', 'password123', '+8801756-840340', 'Apt 4B', '742 Evergreen Terrace', 'Barishal', '9777', 'Leave package at front porch'),
-('CUST-2', 'abir', 'Ahmad Taquie Abir', 'abir@gmail.com', 'password123', '+8801576-455432', 'Unit 12', '123 Maple Street', 'Bogra', '8101', 'Ring doorbell on arrival'),
-('CUST-3', 'mayel', 'Raian Rashid Mayel', 'raianrashidmayel@gmail.com', 'password123', '+8801734-674789', 'Suite 300', '456 Bak Avenue', 'Bhola', '4107', 'Call upon arrival')
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO users (id, username, password, email, role, entity_id, created_at) VALUES
-('USR-CUST-1', 'kairo', 'password123', 'kairo21@gmail.com', 'customer', 'CUST-1', CURRENT_TIMESTAMP),
-('USR-CUST-2', 'abir', 'password123', 'abir@gmail.com', 'customer', 'CUST-2', CURRENT_TIMESTAMP),
-('USR-CUST-3', 'mayel', 'password123', 'raianrashidmayel@gmail.com', 'customer', 'CUST-3', CURRENT_TIMESTAMP)
-ON CONFLICT (id) DO NOTHING;
-
--- Products
-INSERT INTO products (id, name, image, description, price, voucher, stock, product_status, category_id, seller_id, review_id, created_at) VALUES
-('PROD-1', 'Wireless Noise-Canceling Headphones', 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&auto=format&fit=crop&q=80', 'High-fidelity audio with active noise cancellation, custom EQ mode, and up to 40 hours of continuous battery playback.', 99.99, 'SAVE20', 25, 'active', 'CAT-1', 'SEL-1', 'REV-1', CURRENT_TIMESTAMP),
-('PROD-2', 'Smart Watch Pro Series 8', 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop&q=80', 'Advanced health metrics tracker featuring ECG sensor, crystal-clear AMOLED display, built-in GPS, and 50m water resistance.', 299.00, 'TECH10', 14, 'active', 'CAT-1', 'SEL-1', 'REV-4', CURRENT_TIMESTAMP),
-('PROD-3', 'Ergonomic Mechanical Keyboard', 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=800&auto=format&fit=crop&q=80', 'Customizable hot-swappable mechanical keyboard with silent tactile switches, per-key RGB backlighting, and solid aluminum casing.', 129.50, '', 8, 'active', 'CAT-1', 'SEL-1', NULL, CURRENT_TIMESTAMP),
-('PROD-4', 'Minimalist Ceramic Coffee Dripper & Pot', 'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?w=800&auto=format&fit=crop&q=80', 'Artisanal heat-resistant matte ceramic pour-over coffee set crafted for optimal extraction and sleek countertop aesthetic.', 45.00, 'BREW15', 30, 'active', 'CAT-2', 'SEL-2', 'REV-3', CURRENT_TIMESTAMP),
-('PROD-5', 'Nordic Linen Throw Blanket', 'https://images.unsplash.com/photo-1584100936595-c0654b55a2e2?w=800&auto=format&fit=crop&q=80', '100% organic French flax linen throw blanket pre-washed for effortless softness and breathable year-round comfort.', 68.00, '', 18, 'active', 'CAT-2', 'SEL-2', NULL, CURRENT_TIMESTAMP),
-('PROD-6', 'Organic Heavyweight Fleece Hoodie', 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=800&auto=format&fit=crop&q=80', 'Ultra-soft 450gsm organic cotton fleece hoodie with double-lined hood and reinforced drop-shoulder design.', 55.00, 'NEW20', 40, 'active', 'CAT-3', 'SEL-3', NULL, CURRENT_TIMESTAMP)
-ON CONFLICT (id) DO NOTHING;
-
--- Reviews
-INSERT INTO reviews (id, product_id, customer_id, customer_name, review_text, rating, created_at) VALUES
-('REV-1', 'PROD-1', 'CUST-1', 'Kairo', 'Outstanding noise cancellation! I wore these on a 10-hour flight and forgot I was on a plane. Battery life easily exceeded expectations.', 5, '2026-07-28 14:32:00+00'),
-('REV-2', 'PROD-1', 'CUST-2', 'Ahmad Taquie Abir', 'Crisp high frequencies and smooth bass response. The ear cups fit tightly without pressing too hard on glasses.', 4, '2026-07-30 09:15:00+00'),
-('REV-3', 'PROD-4', 'CUST-3', 'Raian Rashid Mayel', 'Gorgeous ceramic texture and brews a clean, aromatic cup of coffee every morning. Packaging was eco-friendly and sturdy.', 5, '2026-07-31 18:40:00+00'),
-('REV-4', 'PROD-2', 'CUST-1', 'Kairo', 'The health sensor accuracy and vibrant screen make this worth every penny. Syncs seamlessly with all my fitness apps!', 5, '2026-08-01 11:20:00+00')
-ON CONFLICT (id) DO NOTHING;
-
--- Orders
-INSERT INTO orders (id, tracking_id, customer_id, items_json, subtotal, shipping_fee, status, shipping_address_json, billing_address_json, additional_info, order_placed_at) VALUES
-('ORD-1', 'TRK-9842-1049', 'CUST-1', '[{"Product_ID":"PROD-1","Name":"Wireless Noise-Canceling Headphones","Price":199.99,"Quantity":1,"Image":"https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&auto=format&fit=crop&q=80","Seller_ID":"SEL-1"}]', 199.99, 5.00, 'delivered', '{"Street":"742 Evergreen Terrace","House_Name":"Apt 4B","City":"Barishal","Postal_Code":"9777","Additional_Info":"Leave package at front porch"}', '{"Street":"742 Evergreen Terrace","House_Name":"Apt 4B","City":"Barishal","Postal_Code":"9777"}', 'Standard delivery via Express Freight.', '2026-07-28 14:30:00+00'),
-('ORD-2', 'TRK-7410-5829', 'CUST-2', '[{"Product_ID":"PROD-4","Name":"Minimalist Ceramic Coffee Dripper & Pot","Price":45.00,"Quantity":2,"Image":"https://images.unsplash.com/photo-1517256064527-09c73fc73e38?w=800&auto=format&fit=crop&q=80","Seller_ID":"SEL-2"}]', 90.00, 5.00, 'shipped', '{"Street":"123 Maple Street","House_Name":"Unit 12","City":"Bogra","Postal_Code":"8101","Additional_Info":"Ring doorbell on arrival"}', '{"Street":"123 Maple Street","House_Name":"Unit 12","City":"Bogra","Postal_Code":"8101"}', 'Fragile ceramic item handle with care.', '2026-07-31 10:15:00+00')
-ON CONFLICT (id) DO NOTHING;
-
--- 5. FOREIGN KEY & DATA CONSTRAINTS
+-- 4. FOREIGN KEY & DATA CONSTRAINTS
 
 -- USERS TABLE CONSTRAINTS
 ALTER TABLE users
@@ -294,15 +215,67 @@ AFTER UPDATE ON sellers
 FOR EACH ROW
 EXECUTE FUNCTION log_seller_status_change();
 
+-- Audit order status changes.
+CREATE TABLE IF NOT EXISTS order_status_audit (
+    audit_id SERIAL PRIMARY KEY,
+    order_id VARCHAR(64) NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    old_status VARCHAR(32),
+    new_status VARCHAR(32),
+    changed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE OR REPLACE FUNCTION log_order_status_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD.status IS DISTINCT FROM NEW.status THEN
+        INSERT INTO order_status_audit (order_id, old_status, new_status)
+        VALUES (NEW.id, OLD.status, NEW.status);
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_order_status_change ON orders;
+CREATE TRIGGER trigger_order_status_change
+AFTER UPDATE ON orders
+FOR EACH ROW
+EXECUTE FUNCTION log_order_status_change();
+
+-- Prevent cart quantities from exceeding current product stock.
+CREATE OR REPLACE FUNCTION check_cart_stock()
+RETURNS TRIGGER AS $$
+DECLARE
+    available_stock INTEGER;
+BEGIN
+    SELECT stock INTO available_stock FROM products WHERE id = NEW.product_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Inventory Error: Product % does not exist.', NEW.product_id;
+    END IF;
+
+    IF NEW.quantity IS NULL OR NEW.quantity > COALESCE(available_stock, 0) THEN
+        RAISE EXCEPTION 'Inventory Error: Cannot add % units. Only % units available.', NEW.quantity, COALESCE(available_stock, 0);
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_check_cart_stock ON cart;
+CREATE TRIGGER trigger_check_cart_stock
+BEFORE INSERT OR UPDATE ON cart
+FOR EACH ROW
+EXECUTE FUNCTION check_cart_stock();
+
 -- Reject products owned by sellers who are not approved.
-CREATE OR REPLACE FUNCTION validate_product_seller()
+CREATE OR REPLACE FUNCTION enforce_seller_status_on_product()
 RETURNS TRIGGER AS $$
 DECLARE
     v_seller_status VARCHAR(32);
 BEGIN
     SELECT status INTO v_seller_status FROM sellers WHERE id = NEW.seller_id;
 
-    IF v_seller_status IS DISTINCT FROM 'approved' THEN
+    IF v_seller_status IS NULL OR v_seller_status IN ('suspended', 'rejected') THEN
         RAISE EXCEPTION 'Data Validation Failed: Cannot insert or update product. Seller % is currently %.', NEW.seller_id, v_seller_status;
     END IF;
 
@@ -311,7 +284,54 @@ END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trigger_validate_product_seller ON products;
-CREATE TRIGGER trigger_validate_product_seller
+DROP FUNCTION IF EXISTS validate_product_seller();
+DROP TRIGGER IF EXISTS trigger_enforce_seller_status ON products;
+CREATE TRIGGER trigger_enforce_seller_status
 BEFORE INSERT OR UPDATE ON products
 FOR EACH ROW
-EXECUTE FUNCTION validate_product_seller();
+EXECUTE FUNCTION enforce_seller_status_on_product();
+
+CREATE OR REPLACE FUNCTION get_customer_lifetime_value(p_customer_id VARCHAR)
+RETURNS NUMERIC AS $$
+DECLARE
+    total_spent NUMERIC;
+BEGIN
+    SELECT COALESCE(SUM(subtotal + shipping_fee), 0.00)
+    INTO total_spent
+    FROM orders
+    WHERE customer_id = p_customer_id
+      AND status = 'delivered';
+
+    RETURN total_spent;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_seller_average_rating(p_seller_id VARCHAR)
+RETURNS NUMERIC AS $$
+DECLARE
+    avg_rating NUMERIC(3, 2);
+BEGIN
+    SELECT COALESCE(AVG(r.rating), 0.00)
+    INTO avg_rating
+    FROM reviews r
+    JOIN products p ON r.product_id = p.id
+    WHERE p.seller_id = p_seller_id;
+
+    RETURN avg_rating;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_cart_subtotal(p_customer_id VARCHAR)
+RETURNS NUMERIC AS $$
+DECLARE
+    cart_total NUMERIC;
+BEGIN
+    SELECT COALESCE(SUM(c.quantity * p.price), 0.00)
+    INTO cart_total
+    FROM cart c
+    JOIN products p ON c.product_id = p.id
+    WHERE c.customer_id = p_customer_id;
+
+    RETURN cart_total;
+END;
+$$ LANGUAGE plpgsql;

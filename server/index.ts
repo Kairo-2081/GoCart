@@ -26,7 +26,7 @@ app.use(authenticateApiRequest);
 app.use(express.json());
 
 // Seed Cloud SQL database if empty on server startup
-seedDatabaseIfEmpty().catch((err) => {
+const databaseReady = seedDatabaseIfEmpty().catch((err) => {
   console.error('Database seeding check failed on startup:', err);
 });
 
@@ -67,6 +67,8 @@ app.use(reviewsRoutes);
 
 // Vite middleware integration
 async function startServer() {
+  await databaseReady;
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true, hmr: false },

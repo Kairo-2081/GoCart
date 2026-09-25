@@ -63,6 +63,7 @@ class RawSqlDatabase {
           if (auraUser) auraUser.username = 'auratech';
         }
         this.isInitialized = true;
+        this.save();
         return;
       } catch (e) {
         console.warn('Failed to parse saved raw SQL database, re-seeding...', e);
@@ -75,7 +76,17 @@ class RawSqlDatabase {
   private save() {
     if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem('marketpulse_raw_sql_db_v4', JSON.stringify(this.tables));
+        const persistedTables = Object.fromEntries(
+          Object.entries(this.tables).map(([tableName, rows]) => [
+            tableName,
+            rows.map((row) => {
+              if (!row || typeof row !== 'object') return row;
+              const { password: _password, ...safeRow } = row;
+              return safeRow;
+            }),
+          ])
+        );
+        localStorage.setItem('marketpulse_raw_sql_db_v4', JSON.stringify(persistedTables));
       } catch (e) {
         console.error('Failed to persist raw SQL database to localStorage', e);
       }
@@ -797,9 +808,9 @@ export const db = {
     const res = rawSql.executeSql<any>('SELECT * FROM sellers ORDER BY created_at DESC');
     return res.rows.map((r) => ({
       Seller_ID: r.id,
+      Username: r.username,
       Name: r.name,
       Email: r.email,
-      Password: r.password,
       Number: r.number,
       Logo: r.logo,
       Description: r.description,
