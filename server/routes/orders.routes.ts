@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { query } from '../db/index.ts';
+import { query, withTransaction } from '../db/index.ts';
 import { requireRole, type AuthRequest } from '../middleware/auth.ts';
 import type { Order } from '../../src/types.ts';
 
@@ -65,12 +65,14 @@ router.post('/api/orders', requireRole('customer'), async (req: AuthRequest, res
     const shipAddrJson = JSON.stringify(Shipping_Address);
     const billAddrJson = JSON.stringify(Billing_Address || Shipping_Address);
     const addInfo = Additional_Info || '';
-    await query(
-      `INSERT INTO orders (id, tracking_id, customer_id, items_json, subtotal, shipping_fee, status, shipping_address_json, billing_address_json, additional_info, order_placed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'placed', $7, $8, $9, CURRENT_TIMESTAMP)`,
-      [id, Tracking_ID, req.user!.sub, JSON.stringify(normalizedItems), subtotal, shippingFee, shipAddrJson, billAddrJson, addInfo]
-    );
-    await query(`DELETE FROM cart WHERE customer_id = $1`, [req.user!.sub]);
+    await withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO orders (id, tracking_id, customer_id, items_json, subtotal, shipping_fee, status, shipping_address_json, billing_address_json, additional_info, order_placed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'placed', $7, $8, $9, CURRENT_TIMESTAMP)`,
+        [id, Tracking_ID, req.user!.sub, JSON.stringify(normalizedItems), subtotal, shippingFee, shipAddrJson, billAddrJson, addInfo]
+      );
+      await client.query(`DELETE FROM cart WHERE customer_id = $1`, [req.user!.sub]);
+    });
     const newOrder: Order = {
       Order_ID: id, Tracking_ID, Customer_ID: req.user!.sub, Items: normalizedItems, Subtotal: subtotal, Shipping_Fee: shippingFee,
       Status: 'placed', Shipping_Address, Billing_Address: Billing_Address || Shipping_Address,
@@ -94,7 +96,7 @@ router.put('/api/orders/:id/status', requireRole('seller', 'admin'), async (req:
       const order = toOrder(result.rows[0]);
       if (!order.Items.some((item: any) => item.Seller_ID === req.user!.sub)) return res.status(403).json({ error: 'You may only update orders containing your products' });
     }
-    await query(`UPDATE orders SET status = $1 WHERE id = $2`, [Status, id]);
+    await withTransaction((client) => client.query(`UPDATE orders SET status = $1 WHERE id = $2`, [Status, id]));
     res.json({ Order_ID: id, Status });
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to update order status' });

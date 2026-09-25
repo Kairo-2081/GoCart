@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { query } from '../db/index.ts';
+import { query, withTransaction } from '../db/index.ts';
 import { requireRole, type AuthRequest } from '../middleware/auth.ts';
 import type { Review } from '../../src/types.ts';
 
@@ -39,12 +39,11 @@ router.post('/api/reviews', requireRole('customer'), async (req: AuthRequest, re
     const id = `REV-${Date.now()}`;
     const customerName = (customer.rows[0] as any).name || req.user!.name;
     const reviewText = typeof Review_text === 'string' ? Review_text : '';
-    await query(
+    await withTransaction((client) => client.query(
       `INSERT INTO reviews (id, product_id, customer_id, customer_name, review_text, rating, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
       [id, Product_ID, req.user!.sub, customerName, reviewText, ratingNum]
-    );
-    await query(`UPDATE products SET review_id = $1 WHERE id = $2`, [id, Product_ID]);
+    ));
     res.status(201).json({
       Review_ID: id, Product_ID, Customer_ID: req.user!.sub, Customer_Name: customerName,
       Review_text: reviewText, Rating: ratingNum, Created_At: new Date().toISOString(),

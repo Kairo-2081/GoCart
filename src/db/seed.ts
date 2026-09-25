@@ -1,4 +1,4 @@
-import { query } from './index.ts';
+import { query, withTransaction } from './index.ts';
 import { hashPassword, isBcryptHash } from './password.ts';
 import {
   initialCategories,
@@ -12,41 +12,39 @@ import {
 
 export async function migrateExistingPasswordsToBcrypt() {
   try {
-    // 1. Migrate Users table
-    const usersRes = await query(`SELECT id, password FROM users`);
-    for (const u of usersRes.rows) {
-      if (u.password && !isBcryptHash(u.password)) {
-        const hashed = await hashPassword(u.password);
-        await query(`UPDATE users SET password = $1 WHERE id = $2`, [hashed, u.id]);
+    await withTransaction(async (client) => {
+      const usersRes = await client.query(`SELECT id, password FROM users`);
+      for (const u of usersRes.rows) {
+        if (u.password && !isBcryptHash(u.password)) {
+          const hashed = await hashPassword(u.password);
+          await client.query(`UPDATE users SET password = $1 WHERE id = $2`, [hashed, u.id]);
+        }
       }
-    }
 
-    // 2. Migrate Admins table
-    const adminsRes = await query(`SELECT id, password FROM admins`);
-    for (const a of adminsRes.rows) {
-      if (a.password && !isBcryptHash(a.password)) {
-        const hashed = await hashPassword(a.password);
-        await query(`UPDATE admins SET password = $1 WHERE id = $2`, [hashed, a.id]);
+      const adminsRes = await client.query(`SELECT id, password FROM admins`);
+      for (const a of adminsRes.rows) {
+        if (a.password && !isBcryptHash(a.password)) {
+          const hashed = await hashPassword(a.password);
+          await client.query(`UPDATE admins SET password = $1 WHERE id = $2`, [hashed, a.id]);
+        }
       }
-    }
 
-    // 3. Migrate Sellers table
-    const sellersRes = await query(`SELECT id, password FROM sellers`);
-    for (const s of sellersRes.rows) {
-      if (s.password && !isBcryptHash(s.password)) {
-        const hashed = await hashPassword(s.password);
-        await query(`UPDATE sellers SET password = $1 WHERE id = $2`, [hashed, s.id]);
+      const sellersRes = await client.query(`SELECT id, password FROM sellers`);
+      for (const s of sellersRes.rows) {
+        if (s.password && !isBcryptHash(s.password)) {
+          const hashed = await hashPassword(s.password);
+          await client.query(`UPDATE sellers SET password = $1 WHERE id = $2`, [hashed, s.id]);
+        }
       }
-    }
 
-    // 4. Migrate Customers table
-    const custsRes = await query(`SELECT id, password FROM customers`);
-    for (const c of custsRes.rows) {
-      if (c.password && !isBcryptHash(c.password)) {
-        const hashed = await hashPassword(c.password);
-        await query(`UPDATE customers SET password = $1 WHERE id = $2`, [hashed, c.id]);
+      const custsRes = await client.query(`SELECT id, password FROM customers`);
+      for (const c of custsRes.rows) {
+        if (c.password && !isBcryptHash(c.password)) {
+          const hashed = await hashPassword(c.password);
+          await client.query(`UPDATE customers SET password = $1 WHERE id = $2`, [hashed, c.id]);
+        }
       }
-    }
+    });
   } catch (err) {
     console.error('Password hash migration error:', err);
   }
@@ -164,6 +162,20 @@ export async function ensureDatabaseSchema() {
         product_id TEXT,
         quantity INTEGER DEFAULT 1
       );
+
+      CREATE OR REPLACE FUNCTION update_product_review_id()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        UPDATE products SET review_id = NEW.id WHERE id = NEW.product_id;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS trg_update_product_review_id ON reviews;
+      CREATE TRIGGER trg_update_product_review_id
+      AFTER INSERT ON reviews
+      FOR EACH ROW
+      EXECUTE FUNCTION update_product_review_id();
     `);
     console.log('Database schema verified/created successfully.');
   } catch (err) {
@@ -171,17 +183,68 @@ export async function ensureDatabaseSchema() {
   }
 }
 
+async function ensureDatabaseTriggers() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS seller_status_audit (
+      audit_id SERIAL PRIMARY KEY,
+      seller_id VARCHAR(64) NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
+      old_status VARCHAR(32),
+      new_status VARCHAR(32),
+      changed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE OR REPLACE FUNCTION log_seller_status_change()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      IF OLD.status IS DISTINCT FROM NEW.status THEN
+        INSERT INTO seller_status_audit (seller_id, old_status, new_status)
+        VALUES (NEW.id, OLD.status, NEW.status);
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS trigger_seller_status_change ON sellers;
+    CREATE TRIGGER trigger_seller_status_change
+    AFTER UPDATE ON sellers
+    FOR EACH ROW
+    EXECUTE FUNCTION log_seller_status_change();
+
+    CREATE OR REPLACE FUNCTION validate_product_seller()
+    RETURNS TRIGGER AS $$
+    DECLARE
+      v_seller_status VARCHAR(32);
+    BEGIN
+      SELECT status INTO v_seller_status FROM sellers WHERE id = NEW.seller_id;
+
+      IF v_seller_status IS DISTINCT FROM 'approved' THEN
+        RAISE EXCEPTION 'Data Validation Failed: Cannot insert or update product. Seller % is currently %.', NEW.seller_id, v_seller_status;
+      END IF;
+
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS trigger_validate_product_seller ON products;
+    CREATE TRIGGER trigger_validate_product_seller
+    BEFORE INSERT OR UPDATE ON products
+    FOR EACH ROW
+    EXECUTE FUNCTION validate_product_seller();
+  `);
+}
+
 export async function seedDatabaseIfEmpty() {
   try {
     // 0. Ensure all tables exist first (for fresh Supabase instances)
     await ensureDatabaseSchema();
 
+    await withTransaction(async (client) => {
     // 1. Seed Categories
-    const existingCats = await query(`SELECT count(*) as count FROM categories`);
+    const existingCats = await client.query(`SELECT count(*) as count FROM categories`);
     if (Number(existingCats.rows[0]?.count || 0) === 0) {
       console.log('Seeding initial categories via SQL queries...');
       for (const cat of initialCategories) {
-        await query(
+        await client.query(
           `INSERT INTO categories (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
           [cat.Category_ID, cat.Name]
         );
@@ -189,11 +252,11 @@ export async function seedDatabaseIfEmpty() {
     }
 
     // 2. Seed Admins & Users
-    const existingAdmins = await query(`SELECT count(*) as count FROM admins`);
+    const existingAdmins = await client.query(`SELECT count(*) as count FROM admins`);
     if (Number(existingAdmins.rows[0]?.count || 0) === 0) {
       console.log('Seeding initial admin...');
       const adminPassHash = await hashPassword(initialAdmin.Password || 'admin123');
-      await query(
+      await client.query(
         `INSERT INTO admins (id, username, name, email, password, number, address_house_name, address_street, address_city, address_postal_code, address_additional_info)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (id) DO NOTHING`,
@@ -212,7 +275,7 @@ export async function seedDatabaseIfEmpty() {
         ]
       );
 
-      await query(
+      await client.query(
         `INSERT INTO users (id, username, password, email, role, entity_id, created_at)
          VALUES ($1, $2, $3, $4, 'admin', $5, CURRENT_TIMESTAMP)
          ON CONFLICT (id) DO NOTHING`,
@@ -227,12 +290,12 @@ export async function seedDatabaseIfEmpty() {
     }
 
     // 3. Seed Sellers & Users
-    const existingSellers = await query(`SELECT count(*) as count FROM sellers`);
+    const existingSellers = await client.query(`SELECT count(*) as count FROM sellers`);
     if (Number(existingSellers.rows[0]?.count || 0) === 0) {
       console.log('Seeding initial sellers to Cloud SQL...');
       for (const sel of initialSellers) {
         const sellerPassHash = await hashPassword(sel.Password || 'seller123');
-        await query(
+        await client.query(
           `INSERT INTO sellers (id, username, name, email, password, number, logo, description, status, address_house_name, address_street, address_city, address_postal_code, address_additional_info, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
            ON CONFLICT (id) DO NOTHING`,
@@ -255,7 +318,7 @@ export async function seedDatabaseIfEmpty() {
           ]
         );
 
-        await query(
+        await client.query(
           `INSERT INTO users (id, username, password, email, role, entity_id, created_at)
            VALUES ($1, $2, $3, $4, 'seller', $5, CURRENT_TIMESTAMP)
            ON CONFLICT (id) DO NOTHING`,
@@ -271,12 +334,12 @@ export async function seedDatabaseIfEmpty() {
     }
 
     // 4. Seed Customers & Users
-    const existingCusts = await query(`SELECT count(*) as count FROM customers`);
+    const existingCusts = await client.query(`SELECT count(*) as count FROM customers`);
     if (Number(existingCusts.rows[0]?.count || 0) === 0) {
       console.log('Seeding initial customers to Cloud SQL...');
       for (const cust of initialCustomers) {
         const custPassHash = await hashPassword(cust.Password || 'password123');
-        await query(
+        await client.query(
           `INSERT INTO customers (id, username, name, email, password, number, address_house_name, address_street, address_city, address_postal_code, address_additional_info)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
            ON CONFLICT (id) DO NOTHING`,
@@ -295,7 +358,7 @@ export async function seedDatabaseIfEmpty() {
           ]
         );
 
-        await query(
+        await client.query(
           `INSERT INTO users (id, username, password, email, role, entity_id, created_at)
            VALUES ($1, $2, $3, $4, 'customer', $5, CURRENT_TIMESTAMP)
            ON CONFLICT (id) DO NOTHING`,
@@ -310,15 +373,12 @@ export async function seedDatabaseIfEmpty() {
       }
     }
 
-    // Migrate any remaining unhashed legacy passwords to bcrypt
-    await migrateExistingPasswordsToBcrypt();
-
     // 5. Seed Products
-    const existingProducts = await query(`SELECT count(*) as count FROM products`);
+    const existingProducts = await client.query(`SELECT count(*) as count FROM products`);
     if (Number(existingProducts.rows[0]?.count || 0) === 0) {
       console.log('Seeding initial products to Cloud SQL...');
       for (const prod of initialProducts) {
-        await query(
+        await client.query(
           `INSERT INTO products (id, name, image, description, price, voucher, stock, product_status, category_id, seller_id, review_id, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
            ON CONFLICT (id) DO NOTHING`,
@@ -340,11 +400,11 @@ export async function seedDatabaseIfEmpty() {
     }
 
     // 6. Seed Reviews
-    const existingReviews = await query(`SELECT count(*) as count FROM reviews`);
+    const existingReviews = await client.query(`SELECT count(*) as count FROM reviews`);
     if (Number(existingReviews.rows[0]?.count || 0) === 0) {
       console.log('Seeding initial reviews to Cloud SQL...');
       for (const rev of initialReviews) {
-        await query(
+        await client.query(
           `INSERT INTO reviews (id, product_id, customer_id, customer_name, review_text, rating, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7)
            ON CONFLICT (id) DO NOTHING`,
@@ -362,11 +422,11 @@ export async function seedDatabaseIfEmpty() {
     }
 
     // 7. Seed Orders
-    const existingOrders = await query(`SELECT count(*) as count FROM orders`);
+    const existingOrders = await client.query(`SELECT count(*) as count FROM orders`);
     if (Number(existingOrders.rows[0]?.count || 0) === 0) {
       console.log('Seeding initial orders to Cloud SQL...');
       for (const ord of initialOrders) {
-        await query(
+        await client.query(
           `INSERT INTO orders (id, tracking_id, customer_id, items_json, subtotal, shipping_fee, status, shipping_address_json, billing_address_json, additional_info, order_placed_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
            ON CONFLICT (id) DO NOTHING`,
@@ -387,6 +447,9 @@ export async function seedDatabaseIfEmpty() {
       }
     }
 
+    });
+    await migrateExistingPasswordsToBcrypt();
+    await ensureDatabaseTriggers();
     console.log('database seeding check complete');
   } catch (error) {
     console.error('Error seeding database:', error);

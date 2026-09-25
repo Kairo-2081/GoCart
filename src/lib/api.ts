@@ -15,6 +15,21 @@ import {
 } from '../types';
 
 const AUTH_TOKEN_KEY = 'marketpulse_auth_token';
+const PUBLIC_API_REQUESTS = new Set([
+  'GET /api/db/status',
+  'GET /api/categories',
+  'GET /api/sellers',
+  'GET /api/products',
+  'GET /api/reviews',
+  'POST /api/auth/login',
+  'POST /api/customers',
+  'POST /api/sellers',
+]);
+const SESSION_BOOTSTRAP_REQUESTS = new Set([
+  'POST /api/auth/login',
+  'POST /api/customers',
+  'POST /api/sellers',
+]);
 
 export function getAuthToken(): string | null {
   return typeof window === 'undefined' ? null : window.localStorage.getItem(AUTH_TOKEN_KEY);
@@ -28,14 +43,56 @@ function storeAuthToken(token: string): void {
   if (typeof window !== 'undefined') window.localStorage.setItem(AUTH_TOKEN_KEY, token);
 }
 
+function notifyUnauthorized(): void {
+  const hadStoredToken = Boolean(getAuthToken());
+  clearAuthToken();
+  if (hadStoredToken && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('marketpulse:unauthorized'));
+  }
+}
+
+function getRequestKey(url: string, method?: string): string {
+  const baseUrl = typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
+  const path = new URL(url, baseUrl).pathname.replace(/\/+$/, '') || '/';
+  return `${(method || 'GET').toUpperCase()} ${path}`;
+}
+
+async function validateSessionBeforeRequest(token: string): Promise<void> {
+  const response = await fetch('/api/auth/me', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    if (response.status === 401) notifyUnauthorized();
+    throw new Error(`Session validation failed (HTTP ${response.status})`);
+  }
+  const session = await response.json();
+  if (!session?.authenticated || !session.user) {
+    notifyUnauthorized();
+    throw new Error('Unauthorized: Missing or invalid token');
+  }
+}
+
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const method = options?.method || 'GET';
+  const requestKey = getRequestKey(url, method);
+  const isPublic = PUBLIC_API_REQUESTS.has(requestKey);
+  const isSessionBootstrap = SESSION_BOOTSTRAP_REQUESTS.has(requestKey);
+  const token = getAuthToken();
+
+  if (token && !isSessionBootstrap) await validateSessionBeforeRequest(token);
+  if (!token && !isPublic) {
+    notifyUnauthorized();
+    throw new Error('Unauthorized: Missing or invalid token');
+  }
+
   const headers = new Headers(options?.headers);
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  const token = getAuthToken();
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (token && !isSessionBootstrap) headers.set('Authorization', `Bearer ${token}`);
   const res = await fetch(url, { ...options, headers });
   if (!res.ok) {
-    if (res.status === 401) clearAuthToken();
+    if (res.status === 401) {
+      notifyUnauthorized();
+    }
     let errorMsg = `HTTP Error ${res.status}`;
     try {
       const errorData = await res.json();

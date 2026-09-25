@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { query } from '../db/index.ts';
+import { query, withTransaction } from '../db/index.ts';
 import { requireRole, type AuthRequest } from '../middleware/auth.ts';
 
 const router = Router();
@@ -40,11 +40,11 @@ router.post('/api/cart', requireRole('customer'), async (req: AuthRequest, res) 
     if (existing.rows.length > 0) {
       const currentItem: any = existing.rows[0];
       const newQty = Number(currentItem.quantity) + qty;
-      await query(`UPDATE cart SET quantity = $1 WHERE id = $2 AND customer_id = $3`, [newQty, currentItem.id, customerId]);
+      await withTransaction((client) => client.query(`UPDATE cart SET quantity = $1 WHERE id = $2 AND customer_id = $3`, [newQty, currentItem.id, customerId]));
       return res.json({ Cart_ID: currentItem.id, Customer_ID: customerId, Product_ID, Quantity: newQty });
     }
     const cartId = `CART-${Date.now()}`;
-    await query(`INSERT INTO cart (id, customer_id, product_id, quantity) VALUES ($1, $2, $3, $4)`, [cartId, customerId, Product_ID, qty]);
+    await withTransaction((client) => client.query(`INSERT INTO cart (id, customer_id, product_id, quantity) VALUES ($1, $2, $3, $4)`, [cartId, customerId, Product_ID, qty]));
     res.status(201).json({ Cart_ID: cartId, Customer_ID: customerId, Product_ID, Quantity: qty });
   } catch (error: any) {
     console.error('Error adding to cart:', error);
@@ -57,7 +57,7 @@ router.put('/api/cart/:cartId', requireRole('customer'), async (req: AuthRequest
     const { cartId } = req.params;
     const qty = Number(req.body.Quantity);
     if (!Number.isInteger(qty) || qty < 1) return res.status(400).json({ error: 'Quantity must be a positive integer' });
-    const result = await query(`UPDATE cart SET quantity = $1 WHERE id = $2 AND customer_id = $3 RETURNING id`, [qty, cartId, req.user!.sub]);
+    const result = await withTransaction((client) => client.query(`UPDATE cart SET quantity = $1 WHERE id = $2 AND customer_id = $3 RETURNING id`, [qty, cartId, req.user!.sub]));
     if (!result.rows.length) return res.status(404).json({ error: 'Cart item not found' });
     res.json({ Cart_ID: cartId, Quantity: qty });
   } catch (error: any) {
@@ -68,7 +68,7 @@ router.put('/api/cart/:cartId', requireRole('customer'), async (req: AuthRequest
 router.delete('/api/cart/:cartId', requireRole('customer'), async (req: AuthRequest, res) => {
   try {
     const { cartId } = req.params;
-    const result = await query(`DELETE FROM cart WHERE id = $1 AND customer_id = $2 RETURNING id`, [cartId, req.user!.sub]);
+    const result = await withTransaction((client) => client.query(`DELETE FROM cart WHERE id = $1 AND customer_id = $2 RETURNING id`, [cartId, req.user!.sub]));
     if (!result.rows.length) return res.status(404).json({ error: 'Cart item not found' });
     res.json({ success: true, message: 'Cart item removed' });
   } catch (error: any) {
