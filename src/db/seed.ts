@@ -1,4 +1,6 @@
-import { query, withTransaction } from './index.ts';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { withTransaction } from './index.ts';
 import { hashPassword, isBcryptHash } from './password.ts';
 import {
   initialCategories,
@@ -51,186 +53,10 @@ export async function migrateExistingPasswordsToBcrypt() {
 }
 
 export async function ensureDatabaseSchema() {
-  try {
-    // Bootstrap tables if connecting to a fresh database like Supabase
-    await query(`
-      CREATE TABLE IF NOT EXISTS categories (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS admins (
-        id TEXT PRIMARY KEY,
-        username TEXT,
-        name TEXT,
-        email TEXT,
-        password TEXT,
-        number TEXT,
-        address_house_name TEXT,
-        address_street TEXT,
-        address_city TEXT,
-        address_postal_code TEXT,
-        address_additional_info TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS sellers (
-        id TEXT PRIMARY KEY,
-        username TEXT,
-        name TEXT,
-        email TEXT,
-        password TEXT,
-        number TEXT,
-        logo TEXT,
-        description TEXT,
-        status TEXT DEFAULT 'pending',
-        address_house_name TEXT,
-        address_street TEXT,
-        address_city TEXT,
-        address_postal_code TEXT,
-        address_additional_info TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS customers (
-        id TEXT PRIMARY KEY,
-        username TEXT,
-        name TEXT,
-        email TEXT,
-        password TEXT,
-        number TEXT,
-        address_house_name TEXT,
-        address_street TEXT,
-        address_city TEXT,
-        address_postal_code TEXT,
-        address_additional_info TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        username TEXT,
-        password TEXT,
-        email TEXT,
-        role TEXT,
-        entity_id TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS products (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        image TEXT,
-        description TEXT,
-        price NUMERIC NOT NULL,
-        voucher TEXT,
-        stock INTEGER DEFAULT 0,
-        product_status TEXT DEFAULT 'active',
-        category_id TEXT,
-        seller_id TEXT,
-        review_id TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS reviews (
-        id TEXT PRIMARY KEY,
-        product_id TEXT,
-        customer_id TEXT,
-        customer_name TEXT,
-        review_text TEXT,
-        rating NUMERIC,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS orders (
-        id TEXT PRIMARY KEY,
-        tracking_id TEXT,
-        customer_id TEXT,
-        items_json TEXT,
-        subtotal NUMERIC,
-        shipping_fee NUMERIC,
-        status TEXT,
-        shipping_address_json TEXT,
-        billing_address_json TEXT,
-        additional_info TEXT,
-        order_placed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS cart (
-        id TEXT PRIMARY KEY,
-        customer_id TEXT,
-        product_id TEXT,
-        quantity INTEGER DEFAULT 1
-      );
-
-      CREATE OR REPLACE FUNCTION update_product_review_id()
-      RETURNS TRIGGER AS $$
-      BEGIN
-        UPDATE products SET review_id = NEW.id WHERE id = NEW.product_id;
-        RETURN NEW;
-      END;
-      $$ LANGUAGE plpgsql;
-
-      DROP TRIGGER IF EXISTS trg_update_product_review_id ON reviews;
-      CREATE TRIGGER trg_update_product_review_id
-      AFTER INSERT ON reviews
-      FOR EACH ROW
-      EXECUTE FUNCTION update_product_review_id();
-    `);
-    console.log('Database schema verified/created successfully.');
-  } catch (err) {
-    console.error('Error verifying database schema:', err);
-  }
-}
-
-async function ensureDatabaseTriggers() {
-  await query(`
-    CREATE TABLE IF NOT EXISTS seller_status_audit (
-      audit_id SERIAL PRIMARY KEY,
-      seller_id VARCHAR(64) NOT NULL REFERENCES sellers(id) ON DELETE CASCADE,
-      old_status VARCHAR(32),
-      new_status VARCHAR(32),
-      changed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE OR REPLACE FUNCTION log_seller_status_change()
-    RETURNS TRIGGER AS $$
-    BEGIN
-      IF OLD.status IS DISTINCT FROM NEW.status THEN
-        INSERT INTO seller_status_audit (seller_id, old_status, new_status)
-        VALUES (NEW.id, OLD.status, NEW.status);
-      END IF;
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
-
-    DROP TRIGGER IF EXISTS trigger_seller_status_change ON sellers;
-    CREATE TRIGGER trigger_seller_status_change
-    AFTER UPDATE ON sellers
-    FOR EACH ROW
-    EXECUTE FUNCTION log_seller_status_change();
-
-    CREATE OR REPLACE FUNCTION validate_product_seller()
-    RETURNS TRIGGER AS $$
-    DECLARE
-      v_seller_status VARCHAR(32);
-    BEGIN
-      SELECT status INTO v_seller_status FROM sellers WHERE id = NEW.seller_id;
-
-      IF v_seller_status IS DISTINCT FROM 'approved' THEN
-        RAISE EXCEPTION 'Data Validation Failed: Cannot insert or update product. Seller % is currently %.', NEW.seller_id, v_seller_status;
-      END IF;
-
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
-
-    DROP TRIGGER IF EXISTS trigger_validate_product_seller ON products;
-    CREATE TRIGGER trigger_validate_product_seller
-    BEFORE INSERT OR UPDATE ON products
-    FOR EACH ROW
-    EXECUTE FUNCTION validate_product_seller();
-  `);
+  const schemaPath = path.resolve(process.cwd(), 'schema.sql');
+  const schemaSql = await readFile(schemaPath, 'utf8');
+  await withTransaction((client) => client.query(schemaSql));
+  console.log('Database schema applied from schema.sql.');
 }
 
 export async function seedDatabaseIfEmpty() {
@@ -449,7 +275,6 @@ export async function seedDatabaseIfEmpty() {
 
     });
     await migrateExistingPasswordsToBcrypt();
-    await ensureDatabaseTriggers();
     console.log('database seeding check complete');
   } catch (error) {
     console.error('Error seeding database:', error);

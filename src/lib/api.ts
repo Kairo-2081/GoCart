@@ -13,6 +13,7 @@ import {
   OrderStatus,
   UserRole,
 } from '../types';
+import { db as localDb } from '../db/rawSqlDatabase';
 
 const AUTH_TOKEN_KEY = 'marketpulse_auth_token';
 const PUBLIC_API_REQUESTS = new Set([
@@ -106,6 +107,16 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+async function withLocalCatalogFallback<T>(request: Promise<T>, getLocalData: () => T): Promise<T> {
+  try {
+    return await request;
+  } catch (error) {
+    if (typeof window === 'undefined' || getAuthToken()) throw error;
+    console.warn('Catalog API unavailable; using the local SQL catalog.', error);
+    return getLocalData();
+  }
+}
+
 interface AuthEnvelope<T> {
   success: boolean;
   token: string;
@@ -126,7 +137,8 @@ export const api = {
   getDbStatus: async () => fetchJson<{ connected: boolean; provider: string; database: string }>('/api/db/status'),
 
   // Categories
-  getCategories: async (): Promise<Category[]> => fetchJson<Category[]>('/api/categories'),
+  getCategories: async (): Promise<Category[]> =>
+    withLocalCatalogFallback(fetchJson<Category[]>('/api/categories'), () => localDb.getCategories()),
   createCategory: async (Name: string): Promise<Category> =>
     fetchJson<Category>('/api/categories', {
       method: 'POST',
@@ -143,7 +155,9 @@ export const api = {
     }),
 
   // Sellers
-  getSellers: async (): Promise<Seller[]> => fetchJson<Seller[]>('/api/sellers'),
+  getSellers: async (): Promise<Seller[]> =>
+    withLocalCatalogFallback(fetchJson<Seller[]>('/api/sellers'), () =>
+      localDb.getSellers().map(({ Password: _password, ...seller }) => seller)),
   createSeller: async (data: Partial<Seller> & { Username?: string }): Promise<Seller> =>
     registerAndAuthenticate<Seller>('/api/sellers', data),
   updateSellerStatus: async (id: string, Status: SellerStatus): Promise<{ Seller_ID: string; Status: string }> =>
@@ -160,7 +174,12 @@ export const api = {
     if (params?.search) searchParams.set('search', params.search);
     if (params?.status) searchParams.set('status', params.status);
     const queryString = searchParams.toString();
-    return fetchJson<Product[]>(`/api/products${queryString ? `?${queryString}` : ''}`);
+    return withLocalCatalogFallback(
+      fetchJson<Product[]>(`/api/products${queryString ? `?${queryString}` : ''}`),
+      () => localDb.getProducts(params)
+        .filter((product) => product.Product_Status === 'active')
+        .filter((product) => !params?.search || product.Name.toLowerCase().includes(params.search.toLowerCase()) || product.Description.toLowerCase().includes(params.search.toLowerCase()))
+    );
   },
   createProduct: async (data: Partial<Product>): Promise<Product> =>
     fetchJson<Product>('/api/products', { method: 'POST', body: JSON.stringify(data) }),
@@ -226,7 +245,12 @@ export const api = {
     if (params?.productId) searchParams.set('productId', params.productId);
     if (params?.sellerId) searchParams.set('sellerId', params.sellerId);
     const queryString = searchParams.toString();
-    return fetchJson<Review[]>(`/api/reviews${queryString ? `?${queryString}` : ''}`);
+    return withLocalCatalogFallback(fetchJson<Review[]>(`/api/reviews${queryString ? `?${queryString}` : ''}`), () => {
+      const localReviews = localDb.getReviews({ productId: params?.productId });
+      if (!params?.sellerId || params.productId) return localReviews;
+      const sellerProductIds = new Set(localDb.getProducts({ sellerId: params.sellerId }).map((product) => product.Product_ID));
+      return localReviews.filter((review) => sellerProductIds.has(review.Product_ID));
+    });
   },
   createReview: async (data: { Product_ID: string; Customer_ID: string; Customer_Name: string; Review_text: string; Rating: number }): Promise<Review> =>
     fetchJson<Review>('/api/reviews', { method: 'POST', body: JSON.stringify(data) }),
@@ -240,10 +264,11 @@ export const api = {
 export const db = api;
 
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
+  const formattedAmount = new Intl.NumberFormat('en-BD', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount);
+  return `Tk ${formattedAmount}`;
 }
 
 export function formatDate(dateString?: string): string {
