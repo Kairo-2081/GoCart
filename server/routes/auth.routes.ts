@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { query } from '../db/index.ts';
+import { query, withTransaction } from '../db/index.ts';
 import { hashPassword, comparePassword, isBcryptHash } from '../db/password.ts';
 import { issueAppToken, requireAuth, requireRole, TOKEN_TTL_SECONDS, type AppRole, type AuthRequest } from '../middleware/auth.ts';
 import { mapAddress } from '../utils.ts';
@@ -66,7 +66,7 @@ router.post('/api/auth/login', async (req, res) => {
       if (!isMatch) return res.status(401).json({ error: 'Incorrect password for this account. Please try again.' });
       if (userMatch.password && !isBcryptHash(userMatch.password)) {
         const newHash = await hashPassword(password);
-        await query(`UPDATE users SET password = $1 WHERE id = $2`, [newHash, userMatch.id]);
+        await withTransaction((client) => client.query(`UPDATE users SET password = $1 WHERE id = $2`, [newHash, userMatch.id]));
       }
       const role = userMatch.role as AppRole;
       if (!['customer', 'seller', 'admin'].includes(role)) return res.status(401).json({ error: 'Invalid account role.' });
@@ -83,7 +83,7 @@ router.post('/api/auth/login', async (req, res) => {
     if (adminRes.rows.length > 0) {
       const row: any = adminRes.rows[0];
       if (!await comparePassword(password, row.password)) return res.status(401).json({ error: 'Incorrect password for this Admin account. Please try again.' });
-      if (row.password && !isBcryptHash(row.password)) await query(`UPDATE admins SET password = $1 WHERE id = $2`, [await hashPassword(password), row.id]);
+      if (row.password && !isBcryptHash(row.password)) await withTransaction(async (client) => client.query(`UPDATE admins SET password = $1 WHERE id = $2`, [await hashPassword(password), row.id]));
       return loginResponse(res, 'admin', row);
     }
 
@@ -94,7 +94,7 @@ router.post('/api/auth/login', async (req, res) => {
     if (sellerRes.rows.length > 0) {
       const row: any = sellerRes.rows[0];
       if (!await comparePassword(password, row.password)) return res.status(401).json({ error: 'Incorrect password for this Seller account. Please try again.' });
-      if (row.password && !isBcryptHash(row.password)) await query(`UPDATE sellers SET password = $1 WHERE id = $2`, [await hashPassword(password), row.id]);
+      if (row.password && !isBcryptHash(row.password)) await withTransaction(async (client) => client.query(`UPDATE sellers SET password = $1 WHERE id = $2`, [await hashPassword(password), row.id]));
       return loginResponse(res, 'seller', row);
     }
 
@@ -105,7 +105,7 @@ router.post('/api/auth/login', async (req, res) => {
     if (customerRes.rows.length > 0) {
       const row: any = customerRes.rows[0];
       if (!await comparePassword(password, row.password)) return res.status(401).json({ error: 'Incorrect password for this Customer account. Please try again.' });
-      if (row.password && !isBcryptHash(row.password)) await query(`UPDATE customers SET password = $1 WHERE id = $2`, [await hashPassword(password), row.id]);
+      if (row.password && !isBcryptHash(row.password)) await withTransaction(async (client) => client.query(`UPDATE customers SET password = $1 WHERE id = $2`, [await hashPassword(password), row.id]));
       return loginResponse(res, 'customer', row);
     }
     return res.status(401).json({ error: `No registered account found for "${cleanInput}". Please create an account first.` });

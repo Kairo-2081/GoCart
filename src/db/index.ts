@@ -122,6 +122,28 @@ export const createPool = () => {
 
 export const pool = createPool();
 
+/** Executes a callback on one dedicated client within an explicit transaction. */
+export async function withTransaction<T>(callback: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  let releaseError: Error | undefined;
+  try {
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      releaseError = rollbackError instanceof Error ? rollbackError : new Error(String(rollbackError));
+      throw new AggregateError([error, rollbackError], 'Transaction failed and rollback also failed');
+    }
+    throw error;
+  } finally {
+    client.release(releaseError);
+  }
+}
+
 // Helper to execute parameterized SQL queries directly with pure pg
 export async function query<T extends pg.QueryResultRow = any>(text: string, params?: any[]): Promise<pg.QueryResult<T>> {
   return pool.query<T>(text, params);
