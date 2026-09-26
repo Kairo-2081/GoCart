@@ -258,6 +258,8 @@ ALTER TABLE reviews ALTER COLUMN created_at SET NOT NULL;
 ALTER TABLE customers DROP COLUMN IF EXISTS username CASCADE, DROP COLUMN IF EXISTS email CASCADE, DROP COLUMN IF EXISTS password CASCADE;
 ALTER TABLE sellers DROP COLUMN IF EXISTS username CASCADE, DROP COLUMN IF EXISTS email CASCADE, DROP COLUMN IF EXISTS password CASCADE;
 ALTER TABLE admins DROP COLUMN IF EXISTS username CASCADE, DROP COLUMN IF EXISTS email CASCADE, DROP COLUMN IF EXISTS password CASCADE;
+
+
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_customers_user') THEN
@@ -368,6 +370,18 @@ ALTER TABLE reviews
     DROP CONSTRAINT IF EXISTS chk_reviews_rating,
     DROP CONSTRAINT IF EXISTS uq_reviews_product_customer,
     ADD CONSTRAINT chk_reviews_rating CHECK (rating >= 1 AND rating <= 5);
+
+-- Remove duplicate reviews (keeping the most recent) before applying the unique constraint
+DELETE FROM reviews
+WHERE id IN (
+    SELECT id
+    FROM (
+        SELECT id, 
+               ROW_NUMBER() OVER (PARTITION BY product_id, customer_id ORDER BY created_at DESC) as rnum
+        FROM reviews
+    ) duplicates
+    WHERE duplicates.rnum > 1
+);
 
 -- Preserve immutable tracking references and enforce single identity email/category names.
 DO $$
