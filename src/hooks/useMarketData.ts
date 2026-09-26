@@ -11,6 +11,9 @@ import {
   Review,
   Seller,
   SellerStatus,
+  TopRatedProduct,
+  TopSeller,
+  TrendingProduct,
   UserRole,
 } from '../types';
 
@@ -26,19 +29,25 @@ export function useMarketData({ refreshCart }: UseMarketDataOptions) {
   const [customers, setCustomers] = React.useState<Customer[]>([]);
   const [orders, setOrders] = React.useState<Order[]>([]);
   const [reviews, setReviews] = React.useState<Review[]>([]);
+  const [topRatedProducts, setTopRatedProducts] = React.useState<TopRatedProduct[]>([]);
+  const [topSellers, setTopSellers] = React.useState<TopSeller[]>([]);
+  const [trendingProducts, setTrendingProducts] = React.useState<TrendingProduct[]>([]);
   const [admins, setAdmins] = React.useState<Admin[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const hadAuthenticatedUser = React.useRef(false);
 
   const loadInitialData = React.useCallback(async () => {
     try {
-      const [loadedCategories, loadedSellers, loadedProducts, loadedReviews] = await Promise.all([
-        api.getCategories(), api.getSellers(), api.getProducts(), api.getReviews(),
+      const [loadedCategories, loadedSellers, loadedProducts, loadedReviews, loadedTopRatedProducts, loadedTopSellers, loadedTrendingProducts] = await Promise.all([
+        api.getCategories(), api.getSellers(), api.getProducts(), api.getReviews(), api.getTopRatedProducts(), api.getTopSellers(), api.getTrendingProducts(),
       ]);
       setCategories(loadedCategories);
       setSellers(loadedSellers);
       setProducts(loadedProducts);
       setReviews(loadedReviews);
+      setTopRatedProducts(loadedTopRatedProducts);
+      setTopSellers(loadedTopSellers);
+      setTrendingProducts(loadedTrendingProducts);
     } catch (error) {
       console.error('Failed to load public catalog data:', error);
     }
@@ -209,6 +218,9 @@ export function useMarketData({ refreshCart }: UseMarketDataOptions) {
     customers,
     orders,
     reviews,
+    topRatedProducts,
+    topSellers,
+    trendingProducts,
     admins,
     loadInitialData,
     loadRoleData,

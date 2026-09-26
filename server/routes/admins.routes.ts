@@ -2,14 +2,14 @@ import { Router } from 'express';
 import { query, withTransaction } from '../db/index.ts';
 import { hashPassword } from '../db/password.ts';
 import { seedDatabaseIfEmpty } from '../db/seed.ts';
-import { mapAddress } from '../utils.ts';
-import { issueAppToken, requireRole, TOKEN_TTL_SECONDS } from '../middleware/auth.ts';
+import { isAddress, isEmail, isOptionalText, isText, mapAddress, respondApiError } from '../utils.ts';
+import { issueAppToken, requireRole, setAuthCookie, TOKEN_TTL_SECONDS } from '../middleware/auth.ts';
 
 const router = Router();
 
 router.get('/api/admins', requireRole('admin'), async (_req, res) => {
   try {
-    const result = await query(`SELECT * FROM admins ORDER BY created_at ASC`);
+    const result = await query(`SELECT * FROM gocart_admins_list()`);
     res.json(result.rows.map((a: any) => ({
       Admin_ID: a.id, Username: a.username, Name: a.name, Email: a.email,
       Number: a.number || '', Address: mapAddress(a),
@@ -22,14 +22,17 @@ router.get('/api/admins', requireRole('admin'), async (_req, res) => {
 router.post('/api/admins', requireRole('admin'), async (req, res) => {
   try {
     const { Name, Email, Password, Number: phoneNum, Address, Username } = req.body;
-    if (!Name || !Email || !Password || typeof Password !== 'string') return res.status(400).json({ error: 'Name, Email, and Password are required' });
+    if (!isText(Name, 255) || !isEmail(Email) || !isText(Password, 72) ||
+      !isOptionalText(Username, 100) || !isText(phoneNum, 50) || !isAddress(Address)) {
+      return res.status(400).json({ error: 'Name, email, password, phone, street, city, and postal code are required.' });
+    }
     const id = `ADM-${Date.now()}`;
     const hashedPassword = await hashPassword(Password);
     const email = String(Email).trim();
     const name = String(Name).trim();
     const username = String(Username || email.split('@')[0]).trim().toLowerCase();
-    const phone = phoneNum || '';
-    const addr = Address || {};
+    const phone = phoneNum.trim();
+    const addr = Address;
     const houseName = addr.House_Name || '';
     const street = addr.Street || '';
     const city = addr.City || '';
@@ -37,45 +40,32 @@ router.post('/api/admins', requireRole('admin'), async (req, res) => {
     const addInfo = addr.Additional_Info || '';
     await withTransaction(async (client) => {
       await client.query(
-        `INSERT INTO admins (id, username, name, email, password, number, address_house_name, address_street, address_city, address_postal_code, address_additional_info, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)`,
+        `SELECT * FROM gocart_admin_create($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [id, username, name, email, hashedPassword, phone, houseName, street, city, postalCode, addInfo]
-      );
-      await client.query(
-        `INSERT INTO users (id, username, password, email, role, entity_id, created_at)
-         VALUES ($1, $2, $3, $4, 'admin', $5, CURRENT_TIMESTAMP)`,
-        [`USR-${id}`, username, hashedPassword, email, id]
       );
     });
     const entity = {
       Admin_ID: id, Username: username, Name: name, Email: email, Number: phone,
       Address: { House_Name: houseName, Street: street, City: city, Postal_Code: postalCode, Additional_Info: addInfo },
     };
-    const token = issueAppToken({ sub: id, role: 'admin', email, username, name });
-    res.status(201).json({ success: true, token, expiresIn: TOKEN_TTL_SECONDS, role: 'admin', entity });
+    const token = await issueAppToken({ sub: id, role: 'admin', email, username, name });
+    setAuthCookie(res, token);
+    res.status(201).json({ success: true, expiresIn: TOKEN_TTL_SECONDS, role: 'admin', entity });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to create admin' });
+    respondApiError(res, error, 'Error creating administrator:');
   }
 });
 
 router.get('/api/stats', requireRole('admin'), async (_req, res) => {
   try {
-    const [custRes, sellersRes, prodsRes, ordersRes] = await Promise.all([
-      query(`SELECT count(*) as count FROM users WHERE role = 'customer'`),
-      query(`SELECT count(*) as total, count(*) FILTER (WHERE status = 'approved') as approved, count(*) FILTER (WHERE status = 'pending') as pending FROM sellers`),
-      query(`SELECT count(*) as total, count(*) FILTER (WHERE product_status = 'active') as active FROM products`),
-      query(`SELECT count(*) as total, coalesce(sum(subtotal), 0) as revenue FROM orders`),
-    ]);
-    const custRow: any = custRes.rows[0] || {};
-    const sellerRow: any = sellersRes.rows[0] || {};
-    const prodRow: any = prodsRes.rows[0] || {};
-    const orderRow: any = ordersRes.rows[0] || {};
+    const result = await query(`SELECT * FROM gocart_admin_dashboard_stats()`);
+    const row: any = result.rows[0] || {};
     res.json({
-      totalCustomers: Number(custRow.count || 0),
-      totalSellers: Number(sellerRow.total || 0), approvedSellers: Number(sellerRow.approved || 0),
-      pendingSellers: Number(sellerRow.pending || 0), totalProducts: Number(prodRow.total || 0),
-      activeProducts: Number(prodRow.active || 0), totalOrders: Number(orderRow.total || 0),
-      totalRevenue: Number(orderRow.revenue || 0), dbProvider: 'Cloud SQL (PostgreSQL - Raw SQL Driver)',
+      totalCustomers: Number(row.total_customers || 0),
+      totalSellers: Number(row.total_sellers || 0), approvedSellers: Number(row.approved_sellers || 0),
+      pendingSellers: Number(row.pending_sellers || 0), totalProducts: Number(row.total_products || 0),
+      activeProducts: Number(row.active_products || 0), totalOrders: Number(row.total_orders || 0),
+      totalRevenue: Number(row.total_revenue || 0), dbProvider: 'Cloud SQL (PostgreSQL - Raw SQL Driver)',
     });
   } catch (error: any) {
     console.error('Error fetching admin stats:', error);
@@ -85,7 +75,7 @@ router.get('/api/stats', requireRole('admin'), async (_req, res) => {
 
 router.get('/api/admin/users', requireRole('admin'), async (_req, res) => {
   try {
-    const result = await query(`SELECT id, username, email, role, entity_id, created_at FROM users ORDER BY created_at DESC`);
+    const result = await query(`SELECT * FROM gocart_admins_users_list()`);
     res.json(result.rows);
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to fetch users' });

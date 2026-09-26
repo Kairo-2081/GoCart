@@ -9,7 +9,7 @@ import {
   SellerStatus,
   UserRole,
 } from './types';
-import { api, getAuthToken } from './lib/api';
+import { api, hasStoredSession } from './lib/api';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { useCart } from './hooks/useCart';
@@ -109,17 +109,21 @@ function AppContent() {
     setViewMode('app');
   };
 
-  const handleLogout = () => {
-    auth.logout();
-    setActiveTab('storefront');
-    setModalState((previous) => ({ ...previous, cart: false, checkout: false }));
+  const handleLogout = async () => {
+    try {
+      await auth.logout();
+      setActiveTab('storefront');
+      setModalState((previous) => ({ ...previous, cart: false, checkout: false }));
+    } catch (error: any) {
+      alert(error.message || 'Could not log out. Check your connection and try again.');
+    }
   };
 
   const validateAuthForPage = async (tab: NavigationTab): Promise<boolean> => {
     const requiredRole = protectedTabRoles[tab];
-    if (!getAuthToken()) {
-      if (requiredRole) setModalOpen('login', true);
-      return !requiredRole;
+    if (!hasStoredSession()) {
+      setModalOpen('login', true);
+      return false;
     }
 
     try {
@@ -221,10 +225,6 @@ function AppContent() {
           admins={market.admins}
           dbStatus={{ connected: true, provider: 'Raw SQL Database Engine', database: 'marketpulse_db' }}
           onOpenLogin={() => setModalOpen('login', true)}
-          onEnterAsGuest={() => {
-            setViewMode('app');
-            setActiveTab('storefront');
-          }}
           onOpenCustomerSignup={() => setModalOpen('customerSignup', true)}
           onOpenSellerSignup={() => setModalOpen('sellerSignup', true)}
           onOpenAdminSignup={auth.isLoggedIn && auth.currentRole === 'admin' ? () => setModalOpen('adminSignup', true) : undefined}
@@ -260,6 +260,9 @@ function AppContent() {
               categories={market.categories}
               sellers={market.sellers}
               reviews={market.reviews}
+              topRatedProducts={market.topRatedProducts}
+              topSellers={market.topSellers}
+              trendingProducts={market.trendingProducts}
               onSelectProduct={setSelectedProduct}
               onAddToCart={handleAddToCart}
             />

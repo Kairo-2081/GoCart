@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { query, withTransaction } from '../db/index.ts';
 import { requireRole, type AuthRequest } from '../middleware/auth.ts';
+import { isAddress, isIdentifier, isText, respondApiError } from '../utils.ts';
 import type { Order } from '../../src/types.ts';
 
 const router = Router();
@@ -19,45 +20,40 @@ function toOrder(o: any): Order {
 
 router.get('/api/orders', requireRole('customer', 'seller', 'admin'), async (req: AuthRequest, res) => {
   try {
-    const result = await query(`SELECT * FROM orders ORDER BY order_placed_at DESC`);
+    let customerFilter: string | undefined;
+    let sellerFilter: string | undefined;
+    if (req.user!.role === 'admin') {
+      const { customerId, sellerId } = req.query;
+      if ((customerId !== undefined && !isIdentifier(customerId)) || (sellerId !== undefined && !isIdentifier(sellerId))) {
+        return res.status(400).json({ error: 'Invalid customerId or sellerId filter.' });
+      }
+      customerFilter = customerId as string | undefined;
+      sellerFilter = sellerId as string | undefined;
+    }
+    const result = await query(`SELECT * FROM gocart_orders_list()`);
     let formatted = result.rows.map(toOrder);
     if (req.user!.role === 'customer') formatted = formatted.filter((order) => order.Customer_ID === req.user!.sub);
     else if (req.user!.role === 'seller') formatted = formatted.filter((order) => order.Items.some((item: any) => item.Seller_ID === req.user!.sub));
     else {
-      const { customerId, sellerId } = req.query;
-      if (customerId) formatted = formatted.filter((order) => order.Customer_ID === customerId);
-      if (sellerId) formatted = formatted.filter((order) => order.Items.some((item: any) => item.Seller_ID === sellerId));
+      if (customerFilter) formatted = formatted.filter((order) => order.Customer_ID === customerFilter);
+      if (sellerFilter) formatted = formatted.filter((order) => order.Items.some((item: any) => item.Seller_ID === sellerFilter));
     }
     res.json(formatted);
   } catch (error: any) {
-    console.error('Error fetching orders:', error);
-    res.status(500).json({ error: 'Failed to fetch orders' });
+    respondApiError(res, error, 'Error fetching orders:');
   }
 });
 
 router.post('/api/orders', requireRole('customer'), async (req: AuthRequest, res) => {
   try {
-    const { Items, Shipping_Address, Billing_Address, Shipping_Fee, Additional_Info } = req.body;
-    if (!Array.isArray(Items) || !Items.length || !Shipping_Address || typeof Shipping_Address !== 'object') {
-      return res.status(400).json({ error: 'Items and Shipping Address are required' });
+    const { Shipping_Address, Billing_Address, Shipping_Fee, Additional_Info } = req.body;
+    if (!isAddress(Shipping_Address)) {
+      return res.status(400).json({ error: 'Shipping Address is required' });
     }
-    const normalizedItems = [];
-    for (const requested of Items) {
-      const productId = requested?.Product_ID;
-      const quantity = Number(requested?.Quantity);
-      if (!productId || !Number.isInteger(quantity) || quantity < 1) return res.status(400).json({ error: 'Each order item requires a product and positive integer quantity' });
-      const result = await query(`SELECT * FROM products WHERE id = $1 AND product_status = 'active'`, [productId]);
-      if (!result.rows.length) return res.status(400).json({ error: `Product ${productId} is unavailable` });
-      const product: any = result.rows[0];
-      if (quantity > Number(product.stock)) return res.status(400).json({ error: `Insufficient stock for ${product.name}` });
-      normalizedItems.push({
-        Product_ID: product.id, Name: product.name, Price: Number(product.price), Quantity: quantity,
-        Image: product.image || '', Seller_ID: product.seller_id,
-      });
-    }
-    const subtotal = normalizedItems.reduce((total, item) => total + item.Price * item.Quantity, 0);
-    const shippingFee = Number(Shipping_Fee ?? 5);
-    if (!Number.isFinite(shippingFee) || shippingFee < 0) return res.status(400).json({ error: 'Invalid shipping fee' });
+    if (Billing_Address !== undefined && !isAddress(Billing_Address)) return res.status(400).json({ error: 'Invalid Billing Address.' });
+    if (Additional_Info !== undefined && !isText(Additional_Info, 2000, true)) return res.status(400).json({ error: 'Additional_Info must be a string up to 2000 characters.' });
+    const shippingFee = Shipping_Fee === undefined ? 5 : Shipping_Fee;
+    if (typeof shippingFee !== 'number' || !Number.isFinite(shippingFee) || shippingFee < 0) return res.status(400).json({ error: 'Invalid shipping fee' });
     const trackNum1 = Math.floor(1000 + Math.random() * 9000);
     const trackNum2 = Math.floor(1000 + Math.random() * 9000);
     const Tracking_ID = `TRK-${trackNum1}-${trackNum2}`;
@@ -65,23 +61,19 @@ router.post('/api/orders', requireRole('customer'), async (req: AuthRequest, res
     const shipAddrJson = JSON.stringify(Shipping_Address);
     const billAddrJson = JSON.stringify(Billing_Address || Shipping_Address);
     const addInfo = Additional_Info || '';
-    await withTransaction(async (client) => {
+    const newOrder = await withTransaction(async (client) => {
       await client.query(
-        `INSERT INTO orders (id, tracking_id, customer_id, items_json, subtotal, shipping_fee, status, shipping_address_json, billing_address_json, additional_info, order_placed_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'placed', $7, $8, $9, CURRENT_TIMESTAMP)`,
-        [id, Tracking_ID, req.user!.sub, JSON.stringify(normalizedItems), subtotal, shippingFee, shipAddrJson, billAddrJson, addInfo]
+        `CALL process_checkout($1, $2, $3, $4, $5, $6, $7)`,
+        [id, Tracking_ID, req.user!.sub, shippingFee, shipAddrJson, billAddrJson, addInfo]
       );
-      await client.query(`DELETE FROM cart WHERE customer_id = $1`, [req.user!.sub]);
+      const result = await client.query(`SELECT * FROM gocart_order_get($1)`, [id]);
+      if (!result.rows.length) throw new Error('Checkout procedure did not create an order.');
+      return toOrder(result.rows[0]);
     });
-    const newOrder: Order = {
-      Order_ID: id, Tracking_ID, Customer_ID: req.user!.sub, Items: normalizedItems, Subtotal: subtotal, Shipping_Fee: shippingFee,
-      Status: 'placed', Shipping_Address, Billing_Address: Billing_Address || Shipping_Address,
-      Order_Placed_At: new Date().toISOString(), Additional_Info: addInfo,
-    };
     res.status(201).json(newOrder);
   } catch (error: any) {
     console.error('Error placing order:', error);
-    res.status(500).json({ error: 'Failed to place order' });
+    respondApiError(res, error, 'Error placing order:');
   }
 });
 
@@ -89,17 +81,18 @@ router.put('/api/orders/:id/status', requireRole('seller', 'admin'), async (req:
   try {
     const { id } = req.params;
     const { Status } = req.body;
+    if (!isIdentifier(id)) return res.status(400).json({ error: 'Invalid order ID.' });
     if (!['placed', 'processing', 'shipped', 'delivered', 'cancelled'].includes(Status)) return res.status(400).json({ error: 'Invalid order status' });
-    const result = await query(`SELECT * FROM orders WHERE id = $1`, [id]);
+    const result = await query(`SELECT * FROM gocart_order_get($1)`, [id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Order not found' });
     if (req.user!.role === 'seller') {
       const order = toOrder(result.rows[0]);
       if (!order.Items.some((item: any) => item.Seller_ID === req.user!.sub)) return res.status(403).json({ error: 'You may only update orders containing your products' });
     }
-    await withTransaction((client) => client.query(`UPDATE orders SET status = $1 WHERE id = $2`, [Status, id]));
+    await withTransaction((client) => client.query(`SELECT * FROM gocart_order_status_update($1, $2)`, [id, Status]));
     res.json({ Order_ID: id, Status });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to update order status' });
+    respondApiError(res, error, 'Error updating order status:');
   }
 });
 

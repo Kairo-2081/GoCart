@@ -60,7 +60,7 @@ export interface Product {
   Product_Status: ProductStatus;
   Category_ID: string;
   Seller_ID: string;
-  Review_ID?: string; // FK to latest or primary review
+  Review_ID?: string; // Legacy local-catalog field; omitted by PostgreSQL API
 }
 
 export interface CartItem {
@@ -104,6 +104,34 @@ export interface Review {
   Review_text: string;
   Rating: number; // 1 to 5
   Created_At: string;
+}
+
+export interface TopRatedProduct {
+  product_id: string;
+  product_name: string;
+  category_name: string;
+  seller_name: string;
+  price: number;
+  average_rating: number;
+  total_reviews: number;
+}
+
+export interface TopSeller {
+  seller_id: string;
+  seller_name: string;
+  total_active_products: number;
+  total_lifetime_reviews: number;
+  overall_average_rating: number;
+}
+
+export interface TrendingProduct {
+  product_id: string;
+  product_name: string;
+  category_name: string;
+  price: number;
+  available_stock: number;
+  distinct_customers_wanting_this: number;
+  total_units_in_carts: number;
 }
 
 export type UserRole = 'customer' | 'seller' | 'admin';

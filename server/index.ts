@@ -14,6 +14,7 @@ import productsRoutes from './routes/products.routes.ts';
 import cartRoutes from './routes/cart.routes.ts';
 import ordersRoutes from './routes/orders.routes.ts';
 import reviewsRoutes from './routes/reviews.routes.ts';
+import statsRoutes from './routes/stats.routes.ts';
 import { assertJwtSecret, authenticateApiRequest } from './middleware/auth.ts';
 
 const app = express();
@@ -26,14 +27,12 @@ app.use(authenticateApiRequest);
 app.use(express.json());
 
 // Seed Cloud SQL database if empty on server startup
-const databaseReady = seedDatabaseIfEmpty().catch((err) => {
-  console.error('Database seeding check failed on startup:', err);
-});
+const databaseReady = seedDatabaseIfEmpty();
 
 app.get('/api/db/status', async (_req, res) => {
   const providerInfo = getDatabaseProviderInfo();
   try {
-    const result = await query(`SELECT 1 as test, current_database() as db_name, version() as pg_version`);
+    const result = await query(`SELECT * FROM gocart_database_status()`);
     res.json({
       connected: true,
       provider: providerInfo.provider,
@@ -64,10 +63,18 @@ app.use(productsRoutes);
 app.use(cartRoutes);
 app.use(ordersRoutes);
 app.use(reviewsRoutes);
+app.use(statsRoutes);
+app.use('/api', (_req, res) => res.status(404).json({ error: 'API endpoint not found.' }));
 
 // Vite middleware integration
 async function startServer() {
-  await databaseReady;
+  try {
+    await databaseReady;
+  } catch (error) {
+    console.error('Database initialization failed; API startup aborted:', error);
+    process.exitCode = 1;
+    return;
+  }
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
