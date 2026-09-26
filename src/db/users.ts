@@ -1,72 +1,47 @@
 import { query, withTransaction } from './index.ts';
 import { hashPassword } from './password.ts';
+import type { Address } from '../types.ts';
 
 export async function getOrCreateUser(
   identifier: string,
   email: string,
   role: string = 'customer',
   name?: string,
-  password?: string
+  password?: string,
+  contact?: { Number: string; Address: Address }
 ) {
   try {
-    const rawPassword = password || 'password123';
+    if (!password?.trim()) throw new Error('Password is required.');
+    if (!contact?.Number?.trim() || !contact.Address?.Street?.trim() ||
+      !contact.Address.City?.trim() || !contact.Address.Postal_Code?.trim()) {
+      throw new Error('Phone, street, city, and postal code are required.');
+    }
+    const rawPassword = password;
     const hashedPassword = await hashPassword(rawPassword);
     const defaultName = name || email.split('@')[0];
     const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
 
     // Check if user already exists
-    const existing = await query(
-      `SELECT * FROM users WHERE id = $1 OR email = $2 OR username = $3 LIMIT 1`,
-      [identifier, email, username]
-    );
+    const existing = await query(`SELECT * FROM gocart_user_find($1, $2, $3)`, [identifier, email, username]);
 
     if (existing.rows.length > 0) {
       return existing.rows[0];
     }
 
     // Insert new user
-    const entityId = role === 'admin' ? `ADM-${Date.now()}` : role === 'seller' ? `SEL-${Date.now()}` : `CUST-${Date.now()}`;
-    const userId = `USR-${identifier.startsWith('USR-') ? identifier.replace('USR-', '') : identifier}`;
+    const userId = role === 'admin' ? `ADM-${Date.now()}` : role === 'seller' ? `SEL-${Date.now()}` : `CUST-${Date.now()}`;
 
     return await withTransaction(async (client) => {
       const result = await client.query(
-        `INSERT INTO users (id, username, password, email, role, entity_id, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
-         ON CONFLICT (id) DO UPDATE SET
-           email = $4,
-           password = COALESCE($3, users.password)
-         RETURNING *`,
-        [userId, username, hashedPassword, email, role, entityId]
+        `SELECT * FROM gocart_user_create($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        [username, hashedPassword, email, role, userId, defaultName, contact.Number.trim(), contact.Address.House_Name || '', contact.Address.Street.trim(), contact.Address.City.trim(), contact.Address.Postal_Code.trim(), contact.Address.Additional_Info || '']
       );
-
-      if (role === 'customer') {
-        await client.query(
-          `INSERT INTO customers (id, username, name, email, password, address_house_name, address_street, address_city, address_postal_code)
-           VALUES ($1, $2, $3, $4, $5, 'Apt 4B', '742 Evergreen Terrace', 'Barishal', '9777')
-           ON CONFLICT (id) DO NOTHING`,
-          [entityId, username, defaultName, email, hashedPassword]
-        );
-      }
-
       return result.rows[0];
     });
   } catch (error) {
     console.error('Error in getOrCreateUser:', error);
-    const existing = await query(`SELECT * FROM users WHERE id = $1 OR email = $2 LIMIT 1`, [identifier, email]);
+    const existing = await query(`SELECT * FROM gocart_user_find($1, $2, NULL)`, [identifier, email]);
     if (existing.rows.length > 0) return existing.rows[0];
-    throw error;
-  }
-}
-
-export async function updateUserRole(uid: string, role: 'customer' | 'seller' | 'admin') {
-  try {
-    const result = await withTransaction((client) => client.query(
-      `UPDATE users SET role = $1 WHERE id = $2 OR entity_id = $2 RETURNING *`,
-      [role, uid]
-    ));
-    return result.rows[0];
-  } catch (error) {
-    console.error('Error updating user role:', error);
     throw error;
   }
 }

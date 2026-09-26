@@ -9,6 +9,8 @@ interface ProductCardProps {
   category?: Category;
   seller?: Seller;
   reviews: Review[];
+  ratingSummary?: { averageRating: number; totalReviews: number };
+  demandSummary?: { customerCount: number; unitCount: number; availableStock: number };
   onSelect: (product: Product) => void;
   onAddToCart: (product: Product, e: React.MouseEvent) => void;
 }
@@ -18,6 +20,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   category,
   seller,
   reviews,
+  ratingSummary,
+  demandSummary,
   onSelect,
   onAddToCart,
 }) => {
@@ -25,10 +29,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const [justAdded, setJustAdded] = React.useState(false);
 
   const productReviews = reviews.filter((r) => r.Product_ID === product.Product_ID);
-  const avgRating =
+  const avgRating = ratingSummary?.averageRating ?? (
     productReviews.length > 0
       ? productReviews.reduce((sum, r) => sum + r.Rating, 0) / productReviews.length
-      : 0;
+      : 0
+  );
+  const reviewCount = ratingSummary?.totalReviews ?? productReviews.length;
 
   const isOutOfStock = Number(product.Stock) <= 0;
   const isDeactivated = product.Product_Status === 'deactivated';
@@ -114,8 +120,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
           {/* Star Rating */}
           <div className="mt-2">
-            <StarRating rating={avgRating} size="sm" showText totalReviews={productReviews.length} />
+            <StarRating rating={avgRating} size="sm" showText totalReviews={reviewCount} />
           </div>
+          {demandSummary && (
+            <p className={`mt-1.5 text-[10px] font-semibold ${demandSummary.unitCount > demandSummary.availableStock ? 'text-amber-700 dark:text-amber-400' : 'text-slate-500 dark:text-zinc-400'}`}>
+              <ShoppingCart className="mr-1 inline h-3 w-3" />
+              {demandSummary.customerCount} shoppers · {demandSummary.unitCount} in carts / {demandSummary.availableStock} in stock
+            </p>
+          )}
         </div>
 
         {/* Price & Action */}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { api, getAuthToken } from '../lib/api';
+import { api, hasStoredSession } from '../lib/api';
 import { Admin, Customer, Seller, UserRole } from '../types';
 
 export type AuthEntity = Customer | Seller | Admin;
@@ -10,7 +10,7 @@ interface AuthContextValue {
   currentRole: UserRole;
   currentUser: AuthEntity | null;
   login: (role: UserRole, entity: AuthEntity) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateCurrentUser: (entity: AuthEntity) => void;
 }
 
@@ -28,8 +28,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoggedIn(true);
   }, []);
 
-  const logout = React.useCallback(() => {
-    api.logout();
+  const logout = React.useCallback(async () => {
+    await api.logout();
     setIsLoggedIn(false);
     setCurrentRole('customer');
     setCurrentUser(null);
@@ -48,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     let active = true;
     const restoreSession = async () => {
-      if (!getAuthToken()) {
+      if (!hasStoredSession()) {
         setIsLoading(false);
         return;
       }
@@ -59,10 +59,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (result.authenticated && result.user) {
           login(result.user.role, result.user.entity);
         } else {
-          api.logout();
+          void api.logout().catch((error) => console.error('Session logout failed:', error));
         }
       } catch {
-        api.logout();
+        void api.logout().catch((error) => console.error('Session logout failed:', error));
       } finally {
         if (active) setIsLoading(false);
       }

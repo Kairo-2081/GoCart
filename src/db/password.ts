@@ -24,19 +24,10 @@ export async function hashPassword(plainTextPassword: string): Promise<string> {
   return await bcrypt.hash(plainTextPassword, SALT_ROUNDS);
 }
 
-/**
- * Compares a plaintext password against a stored password (hashed or legacy plaintext)
- */
-export async function comparePassword(plainTextPassword: string, storedPasswordHashOrPlain: string): Promise<boolean> {
-  if (!plainTextPassword || !storedPasswordHashOrPlain) {
+/** Compares a plaintext password against a stored bcrypt hash. */
+export async function comparePassword(plainTextPassword: string, storedPasswordHash: string): Promise<boolean> {
+  if (!plainTextPassword || !isBcryptHash(storedPasswordHash)) {
     return false;
   }
-
-  // If the stored string is a valid bcrypt hash, compare using bcrypt
-  if (isBcryptHash(storedPasswordHashOrPlain)) {
-    return await bcrypt.compare(plainTextPassword, storedPasswordHashOrPlain);
-  }
-
-  // Fallback for legacy plain text passwords during migration
-  return plainTextPassword === storedPasswordHashOrPlain;
+  return await bcrypt.compare(plainTextPassword, storedPasswordHash);
 }

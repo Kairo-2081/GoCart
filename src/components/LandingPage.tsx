@@ -6,7 +6,6 @@ import {
   Store,
   ShieldCheck,
   Database,
-  ArrowRight,
   Sparkles,
   UserPlus,
   LogIn,
@@ -22,7 +21,6 @@ interface LandingPageProps {
   admins?: Admin[];
   dbStatus: { connected: boolean; provider: string; database: string };
   onOpenLogin: () => void;
-  onEnterAsGuest: () => void;
   onOpenCustomerSignup?: () => void;
   onOpenSellerSignup: () => void;
   onOpenAdminSignup?: () => void;
@@ -36,7 +34,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   admin,
   dbStatus,
   onOpenLogin,
-  onEnterAsGuest,
   onOpenCustomerSignup,
   onOpenSellerSignup,
   onOpenAdminSignup,
@@ -128,13 +125,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             >
               <LogIn className="w-4 h-4" />
               <span>Sign In with Username &amp; Password</span>
-            </button>
-            <button
-              onClick={onEnterAsGuest}
-              className="flex items-center gap-2 px-5 py-3 bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-800 dark:text-zinc-200 font-semibold text-sm rounded-xl border border-slate-200 dark:border-zinc-800 transition-all cursor-pointer"
-            >
-              <span>Browse Catalog as Guest</span>
-              <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>

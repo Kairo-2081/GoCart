@@ -55,8 +55,9 @@ export const SellerSignupModal: React.FC<SellerSignupModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !email.trim() || !password.trim() || !address.Street.trim() || !address.City.trim()) {
-      setError('Please fill out all required fields including password.');
+    if (!name.trim() || !email.trim() || !password.trim() || !number.trim() ||
+      !address.Street.trim() || !address.City.trim() || !address.Postal_Code.trim()) {
+      setError('Please provide name, email, password, phone, street, city, and postal code.');
       return;
     }
 
@@ -69,7 +70,7 @@ export const SellerSignupModal: React.FC<SellerSignupModalProps> = ({
         Name: name.trim(),
         Email: email.trim(),
         Password: password.trim(),
-        Number: number.trim() || '+1 (555) 000-0000',
+        Number: number.trim(),
         Logo: logo.trim(),
         Description: description.trim(),
         Address: address,
@@ -191,10 +192,11 @@ export const SellerSignupModal: React.FC<SellerSignupModalProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-slate-700 dark:text-zinc-300 font-semibold mb-1">Phone Number</label>
+              <label className="block text-slate-700 dark:text-zinc-300 font-semibold mb-1">Phone Number *</label>
               <div className="relative">
                 <input
                   type="text"
+                  required
                   placeholder="+1 (555) 000-0000"
                   value={number}
                   onChange={(e) => setNumber(e.target.value)}
@@ -268,9 +270,10 @@ export const SellerSignupModal: React.FC<SellerSignupModalProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-slate-600 dark:text-zinc-400 mb-1">Postal Code</label>
+                <label className="block text-slate-600 dark:text-zinc-400 mb-1">Postal Code *</label>
                 <input
                   type="text"
+                  required
                   placeholder="e.g. 78701"
                   value={address.Postal_Code}
                   onChange={(e) => setAddress({ ...address, Postal_Code: e.target.value })}
