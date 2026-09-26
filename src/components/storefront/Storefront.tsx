@@ -1,14 +1,17 @@
 import React from 'react';
-import { Product, Category, Seller, Review } from '../../types';
+import { Product, Category, Seller, Review, TopRatedProduct, TopSeller, TrendingProduct } from '../../types';
 import { ProductCard } from './ProductCard';
 import { formatCurrency } from '../../lib/api';
-import { Search, Sparkles, SlidersHorizontal, ShoppingBag, ArrowUpDown, X, Check } from 'lucide-react';
+import { Search, Sparkles, SlidersHorizontal, ShoppingBag, ArrowUpDown, X, Check, Store, TrendingUp } from 'lucide-react';
 
 interface StorefrontProps {
   products: Product[];
   categories: Category[];
   sellers: Seller[];
   reviews: Review[];
+  topRatedProducts: TopRatedProduct[];
+  topSellers: TopSeller[];
+  trendingProducts: TrendingProduct[];
   onSelectProduct: (product: Product) => void;
   onAddToCart: (product: Product, quantity?: number) => void;
 }
@@ -18,6 +21,9 @@ export const Storefront: React.FC<StorefrontProps> = ({
   categories,
   sellers,
   reviews,
+  topRatedProducts,
+  topSellers,
+  trendingProducts,
   onSelectProduct,
   onAddToCart,
 }) => {
@@ -105,6 +111,15 @@ export const Storefront: React.FC<StorefrontProps> = ({
     });
   }, [products, sellers, approvedSellerIds, selectedCategory, stockFilter, maxPrice, searchQuery, categories, sortBy, ratingMap]);
 
+  const topRatedCards = topRatedProducts.flatMap((rating) => {
+    const product = products.find((item) => item.Product_ID === rating.product_id);
+    return product ? [{ product, rating }] : [];
+  });
+  const trendingCards = trendingProducts.flatMap((demand) => {
+    const product = products.find((item) => item.Product_ID === demand.product_id);
+    return product ? [{ product, demand }] : [];
+  });
+
   return (
     <div className="space-y-8 pb-16 text-slate-900 dark:text-zinc-100">
       {/* Search & Hero Banner */}
@@ -144,6 +159,107 @@ export const Storefront: React.FC<StorefrontProps> = ({
           </div>
         </div>
       </div>
+
+      <section className="space-y-4" aria-labelledby="trending-heading">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 pb-3 dark:border-zinc-800">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">Live cart activity</p>
+            <h2 id="trending-heading" className="mt-1 flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white">
+              <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" /> Trending Now
+            </h2>
+          </div>
+          <span className="text-xs text-slate-500 dark:text-zinc-400">Ranked by units in carts</span>
+        </div>
+        {trendingCards.length === 0 ? (
+          <p className="py-5 text-sm text-slate-500 dark:text-zinc-400">No active cart demand yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {trendingCards.map(({ product, demand }) => (
+              <ProductCard
+                key={`trending-${product.Product_ID}`}
+                product={product}
+                category={categories.find((item) => item.Category_ID === product.Category_ID)}
+                seller={sellers.find((item) => item.Seller_ID === product.Seller_ID)}
+                reviews={reviews}
+                demandSummary={{
+                  customerCount: demand.distinct_customers_wanting_this,
+                  unitCount: demand.total_units_in_carts,
+                  availableStock: demand.available_stock,
+                }}
+                onSelect={onSelectProduct}
+                onAddToCart={(item, event) => {
+                  event.stopPropagation();
+                  onAddToCart(item, 1);
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-4" aria-labelledby="top-rated-heading">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 pb-3 dark:border-zinc-800">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">Customer favorites</p>
+            <h2 id="top-rated-heading" className="mt-1 text-xl font-bold text-slate-900 dark:text-white">Top Rated</h2>
+          </div>
+          <span className="text-xs text-slate-500 dark:text-zinc-400">4.0+ average · 3+ reviews</span>
+        </div>
+        {topRatedCards.length === 0 ? (
+          <p className="py-5 text-sm text-slate-500 dark:text-zinc-400">No products meet the review threshold yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {topRatedCards.map(({ product, rating }) => (
+              <ProductCard
+                key={`top-${product.Product_ID}`}
+                product={product}
+                category={categories.find((item) => item.Category_ID === product.Category_ID)}
+                seller={sellers.find((item) => item.Seller_ID === product.Seller_ID)}
+                reviews={reviews}
+                ratingSummary={{ averageRating: rating.average_rating, totalReviews: rating.total_reviews }}
+                onSelect={onSelectProduct}
+                onAddToCart={(item, event) => {
+                  event.stopPropagation();
+                  onAddToCart(item, 1);
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-4" aria-labelledby="top-sellers-heading">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 pb-3 dark:border-zinc-800">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-zinc-400">Marketplace leaderboard</p>
+            <h2 id="top-sellers-heading" className="mt-1 flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white">
+              <Store className="h-5 w-5 text-indigo-600 dark:text-indigo-400" /> Top Sellers
+            </h2>
+          </div>
+          <span className="text-xs text-slate-500 dark:text-zinc-400">5+ reviews</span>
+        </div>
+        {topSellers.length === 0 ? (
+          <p className="py-5 text-sm text-slate-500 dark:text-zinc-400">No sellers meet the review threshold yet.</p>
+        ) : (
+          <ol className="divide-y divide-slate-200 dark:divide-zinc-800">
+            {topSellers.map((seller, index) => (
+              <li key={seller.seller_id} className="grid grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-3 py-3">
+                <span className="font-mono text-sm font-bold text-slate-400 dark:text-zinc-500">{String(index + 1).padStart(2, '0')}</span>
+                <div className="min-w-0">
+                  <h3 className="truncate text-sm font-semibold text-slate-900 dark:text-white">{seller.seller_name}</h3>
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+                    {seller.total_active_products} active products · {seller.total_lifetime_reviews} reviews
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-bold text-slate-900 dark:text-white">{seller.overall_average_rating.toFixed(2)}</span>
+                  <span className="ml-1 text-xs text-amber-600 dark:text-amber-400">★</span>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
 
       {/* Category Pills & Sub-filters */}
       <div className="space-y-4">

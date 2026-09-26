@@ -11,17 +11,16 @@ import {
   SellerStatus,
   ProductStatus,
   OrderStatus,
+  TopRatedProduct,
+  TopSeller,
+  TrendingProduct,
   UserRole,
 } from '../types';
 import { db as localDb } from '../db/rawSqlDatabase';
 
-const AUTH_TOKEN_KEY = 'marketpulse_auth_token';
+const AUTH_SESSION_MARKER_KEY = 'marketpulse_session_active';
+const LEGACY_AUTH_TOKEN_KEY = 'marketpulse_auth_token';
 const PUBLIC_API_REQUESTS = new Set([
-  'GET /api/db/status',
-  'GET /api/categories',
-  'GET /api/sellers',
-  'GET /api/products',
-  'GET /api/reviews',
   'POST /api/auth/login',
   'POST /api/customers',
   'POST /api/sellers',
@@ -32,20 +31,25 @@ const SESSION_BOOTSTRAP_REQUESTS = new Set([
   'POST /api/sellers',
 ]);
 
-export function getAuthToken(): string | null {
-  return typeof window === 'undefined' ? null : window.localStorage.getItem(AUTH_TOKEN_KEY);
+export function hasStoredSession(): boolean {
+  if (typeof window === 'undefined') return false;
+  window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
+  return window.localStorage.getItem(AUTH_SESSION_MARKER_KEY) === '1';
 }
 
 export function clearAuthToken(): void {
-  if (typeof window !== 'undefined') window.localStorage.removeItem(AUTH_TOKEN_KEY);
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(AUTH_SESSION_MARKER_KEY);
+    window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
+  }
 }
 
-function storeAuthToken(token: string): void {
-  if (typeof window !== 'undefined') window.localStorage.setItem(AUTH_TOKEN_KEY, token);
+function storeSessionMarker(): void {
+  if (typeof window !== 'undefined') window.localStorage.setItem(AUTH_SESSION_MARKER_KEY, '1');
 }
 
 function notifyUnauthorized(): void {
-  const hadStoredToken = Boolean(getAuthToken());
+  const hadStoredToken = hasStoredSession();
   clearAuthToken();
   if (hadStoredToken && typeof window !== 'undefined') {
     window.dispatchEvent(new Event('marketpulse:unauthorized'));
@@ -58,9 +62,10 @@ function getRequestKey(url: string, method?: string): string {
   return `${(method || 'GET').toUpperCase()} ${path}`;
 }
 
-async function validateSessionBeforeRequest(token: string): Promise<void> {
+async function validateSessionBeforeRequest(): Promise<void> {
   const response = await fetch('/api/auth/me', {
-    headers: { Authorization: `Bearer ${token}` },
+    credentials: 'same-origin',
+    cache: 'no-store',
   });
   if (!response.ok) {
     if (response.status === 401) notifyUnauthorized();
@@ -78,18 +83,17 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const requestKey = getRequestKey(url, method);
   const isPublic = PUBLIC_API_REQUESTS.has(requestKey);
   const isSessionBootstrap = SESSION_BOOTSTRAP_REQUESTS.has(requestKey);
-  const token = getAuthToken();
+  const hasSession = hasStoredSession();
 
-  if (token && !isSessionBootstrap) await validateSessionBeforeRequest(token);
-  if (!token && !isPublic) {
+  if (hasSession && !isSessionBootstrap) await validateSessionBeforeRequest();
+  if (!hasSession && !isPublic) {
     notifyUnauthorized();
     throw new Error('Unauthorized: Missing or invalid token');
   }
 
   const headers = new Headers(options?.headers);
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  if (token && !isSessionBootstrap) headers.set('Authorization', `Bearer ${token}`);
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(url, { ...options, headers, credentials: 'same-origin' });
   if (!res.ok) {
     if (res.status === 401) {
       notifyUnauthorized();
@@ -104,6 +108,7 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
     }
     throw new Error(errorMsg);
   }
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
@@ -111,7 +116,8 @@ async function withLocalCatalogFallback<T>(request: Promise<T>, getLocalData: ()
   try {
     return await request;
   } catch (error) {
-    if (typeof window === 'undefined' || getAuthToken()) throw error;
+    if (typeof window === 'undefined' || !hasStoredSession()) throw error;
+    await validateSessionBeforeRequest();
     console.warn('Catalog API unavailable; using the local SQL catalog.', error);
     return getLocalData();
   }
@@ -119,7 +125,6 @@ async function withLocalCatalogFallback<T>(request: Promise<T>, getLocalData: ()
 
 interface AuthEnvelope<T> {
   success: boolean;
-  token: string;
   expiresIn: number;
   role: UserRole;
   entity: T;
@@ -127,7 +132,7 @@ interface AuthEnvelope<T> {
 
 async function registerAndAuthenticate<T>(url: string, data: unknown): Promise<T> {
   const response = await fetchJson<AuthEnvelope<T>>(url, { method: 'POST', body: JSON.stringify(data) });
-  if (response.success && response.token) storeAuthToken(response.token);
+  if (response.success) storeSessionMarker();
   return response.entity;
 }
 
@@ -146,11 +151,11 @@ export const api = {
     }),
   updateCategory: async (id: string, Name: string): Promise<Category> =>
     fetchJson<Category>(`/api/categories/${encodeURIComponent(id)}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify({ Name }),
     }),
   deleteCategory: async (id: string) =>
-    fetchJson<{ success: boolean }>(`/api/categories/${encodeURIComponent(id)}`, {
+    fetchJson<void>(`/api/categories/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     }),
 
@@ -181,21 +186,97 @@ export const api = {
         .filter((product) => !params?.search || product.Name.toLowerCase().includes(params.search.toLowerCase()) || product.Description.toLowerCase().includes(params.search.toLowerCase()))
     );
   },
+  getTopRatedProducts: async (): Promise<TopRatedProduct[]> =>
+    withLocalCatalogFallback(fetchJson<TopRatedProduct[]>('/api/stats/top-products'), () => {
+      const categories = localDb.getCategories();
+      const sellers = localDb.getSellers();
+      return localDb.getProducts()
+        .filter((product) => product.Product_Status === 'active')
+        .flatMap((product) => {
+          const seller = sellers.find((item) => item.Seller_ID === product.Seller_ID);
+          const productReviews = localDb.getReviews({ productId: product.Product_ID });
+          if (seller?.Status !== 'approved' || productReviews.length < 3) return [];
+          return [{
+            product_id: product.Product_ID,
+            product_name: product.Name,
+            category_name: categories.find((item) => item.Category_ID === product.Category_ID)?.Name || 'General',
+            seller_name: seller.Name,
+            price: product.Price,
+            average_rating: Math.round(productReviews.reduce((sum, review) => sum + review.Rating, 0) / productReviews.length * 10) / 10,
+            total_reviews: productReviews.length,
+          }];
+        })
+        .sort((left, right) => right.average_rating - left.average_rating || right.total_reviews - left.total_reviews)
+        .slice(0, 12);
+    }),
+  getTopSellers: async (): Promise<TopSeller[]> =>
+    withLocalCatalogFallback(fetchJson<TopSeller[]>('/api/stats/top-sellers'), () => {
+      const products = localDb.getProducts().filter((product) => product.Product_Status === 'active');
+      const reviews = localDb.getReviews();
+      return localDb.getSellers()
+        .filter((seller) => seller.Status === 'approved')
+        .flatMap((seller) => {
+          const sellerProducts = products.filter((product) => product.Seller_ID === seller.Seller_ID);
+          const productIds = new Set(sellerProducts.map((product) => product.Product_ID));
+          const sellerReviews = reviews.filter((review) => productIds.has(review.Product_ID));
+          if (sellerReviews.length < 5) return [];
+          return [{
+            seller_id: seller.Seller_ID,
+            seller_name: seller.Name,
+            total_active_products: sellerProducts.length,
+            total_lifetime_reviews: sellerReviews.length,
+            overall_average_rating: Math.round(sellerReviews.reduce((sum, review) => sum + review.Rating, 0) / sellerReviews.length * 100) / 100,
+          }];
+        })
+        .sort((left, right) => right.overall_average_rating - left.overall_average_rating || right.total_lifetime_reviews - left.total_lifetime_reviews)
+        .slice(0, 10);
+    }),
+  getTrendingProducts: async (): Promise<TrendingProduct[]> =>
+    withLocalCatalogFallback(fetchJson<TrendingProduct[]>('/api/stats/trending-products'), () => {
+      const categories = localDb.getCategories();
+      const products = localDb.getProducts().filter((product) => product.Product_Status === 'active');
+      const cartRows = localDb.query<{ customer_id: string; product_id: string; quantity: number }>(
+        'SELECT customer_id, product_id, quantity FROM cart'
+      ).rows;
+      const demandByProduct = new Map<string, { customers: Set<string>; units: number }>();
+      for (const cartRow of cartRows) {
+        const demand = demandByProduct.get(cartRow.product_id) || { customers: new Set<string>(), units: 0 };
+        demand.customers.add(cartRow.customer_id);
+        demand.units += Number(cartRow.quantity) || 0;
+        demandByProduct.set(cartRow.product_id, demand);
+      }
+      return products.flatMap((product) => {
+        const demand = demandByProduct.get(product.Product_ID);
+        const category = categories.find((item) => item.Category_ID === product.Category_ID);
+        if (!demand || !category) return [];
+        return [{
+          product_id: product.Product_ID,
+          product_name: product.Name,
+          category_name: category.Name,
+          price: product.Price,
+          available_stock: product.Stock,
+          distinct_customers_wanting_this: demand.customers.size,
+          total_units_in_carts: demand.units,
+        }];
+      })
+        .sort((left, right) => right.total_units_in_carts - left.total_units_in_carts || right.distinct_customers_wanting_this - left.distinct_customers_wanting_this)
+        .slice(0, 10);
+    }),
   createProduct: async (data: Partial<Product>): Promise<Product> =>
     fetchJson<Product>('/api/products', { method: 'POST', body: JSON.stringify(data) }),
   updateProduct: async (id: string, data: Partial<Product>): Promise<Product> =>
-    fetchJson<Product>(`/api/products/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+    fetchJson<Product>(`/api/products/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
   updateProductStatus: async (id: string, Product_Status: ProductStatus): Promise<{ success: boolean; id: string; Product_Status: ProductStatus }> =>
     fetchJson<{ success: boolean; id: string; Product_Status: ProductStatus }>(`/api/products/${encodeURIComponent(id)}/status`, { method: 'PUT', body: JSON.stringify({ Product_Status }) }),
-  deleteProduct: async (id: string): Promise<{ success: boolean }> =>
-    fetchJson<{ success: boolean }>(`/api/products/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  deleteProduct: async (id: string): Promise<void> =>
+    fetchJson<void>(`/api/products/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   // Customers
   getCustomers: async (): Promise<Customer[]> => fetchJson<Customer[]>('/api/customers'),
   createCustomer: async (data: Partial<Customer> & { Username?: string }): Promise<Customer> =>
     registerAndAuthenticate<Customer>('/api/customers', data),
   updateCustomer: async (id: string, data: Partial<Customer>): Promise<Customer> =>
-    fetchJson<Customer>(`/api/customers/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+    fetchJson<Customer>(`/api/customers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   // Admins
   getAdmins: async (): Promise<Admin[]> => fetchJson<Admin[]>('/api/admins'),
@@ -203,16 +284,30 @@ export const api = {
     registerAndAuthenticate<Admin>('/api/admins', data),
 
   // Auth Login: Across all devices with Cloud SQL Postgres
-  login: async (usernameOrEmail: string, password: string, role?: UserRole): Promise<{ success: boolean; token: string; expiresIn: number; role: UserRole; entity: any; message?: string }> => {
-    const result = await fetchJson<{ success: boolean; token: string; expiresIn: number; role: UserRole; entity: any; message?: string }>('/api/auth/login', {
-      method: 'POST', body: JSON.stringify({ email: usernameOrEmail, password, role }),
+  login: async (usernameOrEmail: string, password: string): Promise<{ success: boolean; expiresIn: number; role: UserRole; entity: any; message?: string }> => {
+    const result = await fetchJson<{ success: boolean; expiresIn: number; role: UserRole; entity: any; message?: string }>('/api/auth/login', {
+      method: 'POST', body: JSON.stringify({ email: usernameOrEmail, password }),
     });
-    if (result.success && result.token) storeAuthToken(result.token);
+    if (result.success) storeSessionMarker();
     return result;
   },
   getCurrentUser: async (): Promise<{ authenticated: boolean; user: { role: UserRole; entity: Customer | Seller | Admin } | null }> =>
     fetchJson('/api/auth/me'),
-  logout: clearAuthToken,
+  logout: async (): Promise<void> => {
+    if (hasStoredSession()) {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (response.status === 401) {
+        clearAuthToken();
+        return;
+      }
+      if (!response.ok) throw new Error('Could not invalidate the server session. Please try logging out again.');
+    }
+    clearAuthToken();
+  },
 
   // Cart
   getCart: async (customerId: string): Promise<CartItem[]> =>
@@ -220,10 +315,10 @@ export const api = {
   addToCart: async (Customer_ID: string, Product_ID: string, Quantity: number = 1): Promise<CartItem> =>
     fetchJson<CartItem>('/api/cart', { method: 'POST', body: JSON.stringify({ Customer_ID, Product_ID, Quantity }) }),
   updateCartQuantity: async (cartId: string, Quantity: number): Promise<void> => {
-    await fetchJson(`/api/cart/${encodeURIComponent(cartId)}`, { method: 'PUT', body: JSON.stringify({ Quantity }) });
+    await fetchJson(`/api/cart/${encodeURIComponent(cartId)}`, { method: 'PATCH', body: JSON.stringify({ Quantity }) });
   },
-  removeFromCart: async (cartId: string): Promise<{ success: boolean }> =>
-    fetchJson<{ success: boolean }>(`/api/cart/${encodeURIComponent(cartId)}`, { method: 'DELETE' }),
+  removeFromCart: async (cartId: string): Promise<void> =>
+    fetchJson<void>(`/api/cart/${encodeURIComponent(cartId)}`, { method: 'DELETE' }),
 
   // Orders
   getOrders: async (params?: { customerId?: string; sellerId?: string }): Promise<Order[]> => {

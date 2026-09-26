@@ -50,8 +50,9 @@ export const CustomerSignupModal: React.FC<CustomerSignupModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !email.trim() || !password.trim()) {
-      setError('Please provide name, email, and password.');
+    if (!name.trim() || !email.trim() || !password.trim() || !number.trim() ||
+      !address.Street.trim() || !address.City.trim() || !address.Postal_Code.trim()) {
+      setError('Please provide name, email, password, phone, street, city, and postal code.');
       return;
     }
     setError(null);
@@ -64,7 +65,7 @@ export const CustomerSignupModal: React.FC<CustomerSignupModalProps> = ({
         Name: name.trim(),
         Email: email.trim(),
         Password: password.trim(),
-        Number: number.trim() || '+1 (555) 000-0000',
+        Number: number.trim(),
         Address: address,
       });
 
@@ -177,10 +178,11 @@ export const CustomerSignupModal: React.FC<CustomerSignupModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-slate-700 dark:text-zinc-300 font-semibold mb-1">Phone Number</label>
+            <label className="block text-slate-700 dark:text-zinc-300 font-semibold mb-1">Phone Number *</label>
             <div className="relative">
               <input
                 type="text"
+                required
                 placeholder="+1 (555) 000-0000"
                 value={number}
                 onChange={(e) => setNumber(e.target.value)}
@@ -206,9 +208,10 @@ export const CustomerSignupModal: React.FC<CustomerSignupModalProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-slate-600 dark:text-zinc-400 mb-1">Street Address</label>
+                <label className="block text-slate-600 dark:text-zinc-400 mb-1">Street Address *</label>
                 <input
                   type="text"
+                  required
                   placeholder="e.g. 742 Evergreen Terrace"
                   value={address.Street}
                   onChange={(e) => setAddress({ ...address, Street: e.target.value })}
@@ -216,9 +219,10 @@ export const CustomerSignupModal: React.FC<CustomerSignupModalProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-slate-600 dark:text-zinc-400 mb-1">City</label>
+                <label className="block text-slate-600 dark:text-zinc-400 mb-1">City *</label>
                 <input
                   type="text"
+                  required
                   placeholder="e.g. Springfield"
                   value={address.City}
                   onChange={(e) => setAddress({ ...address, City: e.target.value })}
@@ -226,9 +230,10 @@ export const CustomerSignupModal: React.FC<CustomerSignupModalProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-slate-600 dark:text-zinc-400 mb-1">Postal Code</label>
+                <label className="block text-slate-600 dark:text-zinc-400 mb-1">Postal Code *</label>
                 <input
                   type="text"
+                  required
                   placeholder="e.g. 97477"
                   value={address.Postal_Code}
                   onChange={(e) => setAddress({ ...address, Postal_Code: e.target.value })}

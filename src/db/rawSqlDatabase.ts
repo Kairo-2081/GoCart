@@ -22,6 +22,15 @@ import {
   initialReviews,
   initialOrders,
 } from '../data/seedData';
+import bcrypt from 'bcryptjs';
+import { isBcryptHash } from './password';
+
+const LOCAL_PASSWORD_SALT_ROUNDS = 10;
+
+function hashLocalPassword(password: any): any {
+  if (typeof password !== 'string' || !password || isBcryptHash(password)) return password;
+  return bcrypt.hashSync(password, LOCAL_PASSWORD_SALT_ROUNDS);
+}
 
 export interface SqlQueryResult<T = any> {
   rows: T[];
@@ -406,6 +415,7 @@ class RawSqlDatabase {
     const startTime = performance.now();
     const cleanSql = sql.trim().replace(/;\s*$/, '');
     const firstWord = cleanSql.split(/\s+/)[0].toUpperCase();
+    const loggedParams = /\bpassword\b/i.test(cleanSql) ? params.map(() => '[REDACTED]') : params;
 
     let result: SqlQueryResult<T> = { rows: [], rowCount: 0, command: firstWord };
 
@@ -429,7 +439,7 @@ class RawSqlDatabase {
         throw new Error(`Unsupported SQL command: ${firstWord}`);
       }
     } catch (err: any) {
-      console.error('SQL Execution Error for Query:', cleanSql, 'Params:', params, err);
+      console.error('SQL Execution Error for Query:', cleanSql, 'Params:', loggedParams, err);
       throw err;
     }
 
@@ -437,7 +447,7 @@ class RawSqlDatabase {
     this.sqlLogs.unshift({
       id: 'LOG-' + Math.random().toString(36).substring(2, 9),
       sql: cleanSql,
-      params,
+      params: loggedParams,
       executionTimeMs: Math.round(elapsed * 100) / 100,
       timestamp: new Date().toLocaleTimeString(),
       rowCount: result.rowCount,
@@ -492,9 +502,11 @@ class RawSqlDatabase {
     columns.forEach((col, i) => {
       const rawVal = valuesPart[i];
       if (rawVal === '?') {
-        newRecord[col] = params[paramIdx++];
+        const value = params[paramIdx++];
+        newRecord[col] = col === 'password' ? hashLocalPassword(value) : value;
       } else {
-        newRecord[col] = this.parseLiteral(rawVal);
+        const value = this.parseLiteral(rawVal);
+        newRecord[col] = col === 'password' ? hashLocalPassword(value) : value;
       }
     });
 
@@ -557,7 +569,7 @@ class RawSqlDatabase {
             const currentVal = Number(row[baseCol]) || 0;
             row[up.col] = op === '+' ? currentVal + Number(operandVal) : Math.max(0, currentVal - Number(operandVal));
           } else {
-            row[up.col] = up.val;
+            row[up.col] = up.col === 'password' ? hashLocalPassword(up.val) : up.val;
           }
         }
         updatedCount++;
@@ -1323,66 +1335,15 @@ export const db = {
   login: (usernameOrEmail: string, password: string): { success: boolean; role: UserRole; entity: any; message?: string } => {
     const trimmedInput = usernameOrEmail.trim().toLowerCase();
     const trimmedPassword = password.trim();
-
-    // Query raw SQL users table
-    let userRes = rawSql.executeSql<any>(
-      `SELECT * FROM users WHERE (LOWER(username) = ? OR LOWER(email) = ?) AND password = ? LIMIT 1`,
-      [trimmedInput, trimmedInput, trimmedPassword]
+    const userRows = rawSql.executeSql<any>(
+      `SELECT * FROM users WHERE (LOWER(username) = ? OR LOWER(email) = ?) LIMIT 1`,
+      [trimmedInput, trimmedInput]
+    ).rows;
+    const userRow = userRows.find((row) =>
+      isBcryptHash(row.password) && bcrypt.compareSync(trimmedPassword, row.password)
     );
+    if (!userRow) return { success: false, role: 'customer', entity: null, message: 'Invalid username or password' };
 
-    // If not found and input is 'auratech', check for 'auratechso' alias or vice versa
-    if (userRes.rowCount === 0) {
-      if (trimmedInput === 'auratech') {
-        userRes = rawSql.executeSql<any>(
-          `SELECT * FROM users WHERE (LOWER(username) = 'auratechso' OR entity_id = 'SEL-1') AND password = ? LIMIT 1`,
-          [trimmedPassword]
-        );
-      } else if (trimmedInput === 'artisanhome') {
-        userRes = rawSql.executeSql<any>(
-          `SELECT * FROM users WHERE (LOWER(username) = 'artisanhom' OR entity_id = 'SEL-2') AND password = ? LIMIT 1`,
-          [trimmedPassword]
-        );
-      } else if (trimmedInput === 'urbanthread') {
-        userRes = rawSql.executeSql<any>(
-          `SELECT * FROM users WHERE (LOWER(username) = 'urbanthrea' OR entity_id = 'SEL-3') AND password = ? LIMIT 1`,
-          [trimmedPassword]
-        );
-      }
-    }
-
-    if (userRes.rowCount === 0) {
-      // Fallback check in customers, sellers, admins tables if user row wasn't linked
-      const custCheck = rawSql.executeSql<any>(
-        `SELECT * FROM customers WHERE (LOWER(username) = ? OR LOWER(email) = ? OR LOWER(name) = ?) AND password = ? LIMIT 1`,
-        [trimmedInput, trimmedInput, trimmedInput, trimmedPassword]
-      );
-      if (custCheck.rowCount > 0) {
-        const c = db.getCustomers().find((x) => x.Customer_ID === custCheck.rows[0].id);
-        return { success: true, role: 'customer', entity: c };
-      }
-
-      const selCheck = rawSql.executeSql<any>(
-        `SELECT * FROM sellers WHERE (LOWER(username) = ? OR LOWER(email) = ? OR LOWER(name) LIKE ? OR id = ?) AND password = ? LIMIT 1`,
-        [trimmedInput, trimmedInput, `%${trimmedInput}%`, trimmedInput === 'auratech' ? 'SEL-1' : trimmedInput, trimmedPassword]
-      );
-      if (selCheck.rowCount > 0) {
-        const s = db.getSellers().find((x) => x.Seller_ID === selCheck.rows[0].id);
-        return { success: true, role: 'seller', entity: s };
-      }
-
-      const admCheck = rawSql.executeSql<any>(
-        `SELECT * FROM admins WHERE (LOWER(username) = ? OR LOWER(email) = ? OR LOWER(name) = ?) AND password = ? LIMIT 1`,
-        [trimmedInput, trimmedInput, trimmedInput, trimmedPassword]
-      );
-      if (admCheck.rowCount > 0) {
-        const a = db.getAdmins().find((x) => x.Admin_ID === admCheck.rows[0].id);
-        return { success: true, role: 'admin', entity: a };
-      }
-
-      return { success: false, role: 'customer', entity: null, message: 'Invalid username or password' };
-    }
-
-    const userRow = userRes.rows[0];
     const role = userRow.role as UserRole;
     const entityId = userRow.entity_id;
 

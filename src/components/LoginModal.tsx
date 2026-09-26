@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { UserRole, Customer, Seller } from '../types';
-import { X, LogIn, Lock, User, Eye, EyeOff, ShieldAlert, UserPlus, Store, CheckCircle, Mail, Phone, MapPin } from 'lucide-react';
+import { X, LogIn, Lock, User, Eye, EyeOff, ShieldAlert, UserPlus, Store, CheckCircle, Mail, Phone } from 'lucide-react';
 import { api } from '../lib/api';
 
 interface LoginModalProps {
@@ -31,7 +31,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [regPassword, setRegPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [regPhone, setRegPhone] = useState('');
+  const [regHouseName, setRegHouseName] = useState('');
+  const [regStreet, setRegStreet] = useState('');
   const [regCity, setRegCity] = useState('');
+  const [regPostalCode, setRegPostalCode] = useState('');
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,8 +74,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!regName.trim() || !regEmail.trim() || !regPassword.trim()) {
-      setError('Name, Email, and Password are required to create an account.');
+    if (!regName.trim() || !regEmail.trim() || !regPassword.trim() || !regPhone.trim() ||
+      !regStreet.trim() || !regCity.trim() || !regPostalCode.trim()) {
+      setError('Name, email, password, phone, street, city, and postal code are required.');
       return;
     }
 
@@ -94,12 +98,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           Name: regName.trim(),
           Email: regEmail.trim(),
           Password: regPassword.trim(),
-          Number: regPhone.trim() || '+8801700-000000',
+          Number: regPhone.trim(),
           Address: {
-            House_Name: 'Apt 1',
-            Street: 'Main Street',
-            City: regCity.trim() || 'Dhaka',
-            Postal_Code: '1000',
+            House_Name: regHouseName.trim(),
+            Street: regStreet.trim(),
+            City: regCity.trim(),
+            Postal_Code: regPostalCode.trim(),
             Additional_Info: '',
           },
         });
@@ -114,14 +118,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           Name: regName.trim(),
           Email: regEmail.trim(),
           Password: regPassword.trim(),
-          Number: regPhone.trim() || '+8801800-000000',
+          Number: regPhone.trim(),
           Logo: 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=200&auto=format&fit=crop&q=80',
           Description: `${regName.trim()} storefront on GoCart Marketplace.`,
           Address: {
-            House_Name: 'Commercial Suite 101',
-            Street: 'Market Street',
-            City: regCity.trim() || 'Dhaka',
-            Postal_Code: '1200',
+            House_Name: regHouseName.trim(),
+            Street: regStreet.trim(),
+            City: regCity.trim(),
+            Postal_Code: regPostalCode.trim(),
             Additional_Info: '',
           },
         });
@@ -424,15 +428,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 </p>
               </div>
 
-              {/* Optional Phone and City */}
+              {/* Required contact and delivery information */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-700 dark:text-zinc-300 font-semibold mb-1">
-                    Phone (Optional)
+                    Phone *
                   </label>
                   <div className="relative">
                     <input
-                      type="text"
+                      type="tel"
+                      required
+                      maxLength={50}
                       placeholder="+88017..."
                       value={regPhone}
                       onChange={(e) => setRegPhone(e.target.value)}
@@ -444,18 +450,56 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
                 <div>
                   <label className="block text-slate-700 dark:text-zinc-300 font-semibold mb-1">
-                    City / Location (Optional)
+                    House / Apt / Suite
                   </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="e.g. Dhaka"
-                      value={regCity}
-                      onChange={(e) => setRegCity(e.target.value)}
-                      className="w-full p-2.5 pl-8 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-zinc-600 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    />
-                    <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3" />
-                  </div>
+                  <input
+                    type="text"
+                    maxLength={255}
+                    placeholder="Apartment or unit (optional)"
+                    value={regHouseName}
+                    onChange={(e) => setRegHouseName(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-zinc-600 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 dark:text-zinc-300 font-semibold mb-1">Street Address *</label>
+                <input
+                  type="text"
+                  required
+                  maxLength={255}
+                  placeholder="Street address"
+                  value={regStreet}
+                  onChange={(e) => setRegStreet(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-zinc-600 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 dark:text-zinc-300 font-semibold mb-1">City *</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={100}
+                    placeholder="City"
+                    value={regCity}
+                    onChange={(e) => setRegCity(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-zinc-600 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 dark:text-zinc-300 font-semibold mb-1">Postal Code *</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={50}
+                    placeholder="Postal code"
+                    value={regPostalCode}
+                    onChange={(e) => setRegPostalCode(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-zinc-600 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
                 </div>
               </div>
 

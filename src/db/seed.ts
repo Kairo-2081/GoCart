@@ -15,35 +15,14 @@ import {
 export async function migrateExistingPasswordsToBcrypt() {
   try {
     await withTransaction(async (client) => {
-      const usersRes = await client.query(`SELECT id, password FROM users`);
-      for (const u of usersRes.rows) {
-        if (u.password && !isBcryptHash(u.password)) {
-          const hashed = await hashPassword(u.password);
-          await client.query(`UPDATE users SET password = $1 WHERE id = $2`, [hashed, u.id]);
-        }
-      }
-
-      const adminsRes = await client.query(`SELECT id, password FROM admins`);
-      for (const a of adminsRes.rows) {
-        if (a.password && !isBcryptHash(a.password)) {
-          const hashed = await hashPassword(a.password);
-          await client.query(`UPDATE admins SET password = $1 WHERE id = $2`, [hashed, a.id]);
-        }
-      }
-
-      const sellersRes = await client.query(`SELECT id, password FROM sellers`);
-      for (const s of sellersRes.rows) {
-        if (s.password && !isBcryptHash(s.password)) {
-          const hashed = await hashPassword(s.password);
-          await client.query(`UPDATE sellers SET password = $1 WHERE id = $2`, [hashed, s.id]);
-        }
-      }
-
-      const custsRes = await client.query(`SELECT id, password FROM customers`);
-      for (const c of custsRes.rows) {
-        if (c.password && !isBcryptHash(c.password)) {
-          const hashed = await hashPassword(c.password);
-          await client.query(`UPDATE customers SET password = $1 WHERE id = $2`, [hashed, c.id]);
+      const passwords = await client.query(`SELECT * FROM gocart_passwords_list()`);
+      for (const account of passwords.rows) {
+        if (account.password && !isBcryptHash(account.password)) {
+          const hashed = await hashPassword(account.password);
+          await client.query(
+            `SELECT gocart_auth_password_update($1, $2, $3)`,
+            [account.account_type, account.id, hashed]
+          );
         }
       }
     });
@@ -65,211 +44,142 @@ export async function seedDatabaseIfEmpty() {
     await ensureDatabaseSchema();
 
     await withTransaction(async (client) => {
+    const countRows = async (table: string) => {
+      const result = await client.query(`SELECT gocart_table_count($1) AS count`, [table]);
+      return Number(result.rows[0]?.count || 0);
+    };
+    const seedRow = async (table: string, row: Record<string, unknown>) => {
+      await client.query(`SELECT gocart_seed_row($1, $2::jsonb)`, [table, JSON.stringify(row)]);
+    };
+
     // 1. Seed Categories
-    const existingCats = await client.query(`SELECT count(*) as count FROM categories`);
-    if (Number(existingCats.rows[0]?.count || 0) === 0) {
+    if (await countRows('categories') === 0) {
       console.log('Seeding initial categories via SQL queries...');
       for (const cat of initialCategories) {
-        await client.query(
-          `INSERT INTO categories (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
-          [cat.Category_ID, cat.Name]
-        );
+        await seedRow('categories', { id: cat.Category_ID, name: cat.Name });
       }
     }
 
     // 2. Seed Admins & Users
-    const existingAdmins = await client.query(`SELECT count(*) as count FROM admins`);
-    if (Number(existingAdmins.rows[0]?.count || 0) === 0) {
+    if (await countRows('admins') === 0) {
       console.log('Seeding initial admin...');
       const adminPassHash = await hashPassword(initialAdmin.Password || 'admin123');
-      await client.query(
-        `INSERT INTO admins (id, username, name, email, password, number, address_house_name, address_street, address_city, address_postal_code, address_additional_info)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-         ON CONFLICT (id) DO NOTHING`,
-        [
-          initialAdmin.Admin_ID,
-          initialAdmin.Username || 'admin',
-          initialAdmin.Name,
-          initialAdmin.Email,
-          adminPassHash,
-          initialAdmin.Number,
-          initialAdmin.Address.House_Name,
-          initialAdmin.Address.Street,
-          initialAdmin.Address.City,
-          initialAdmin.Address.Postal_Code,
-          initialAdmin.Address.Additional_Info || '',
-        ]
-      );
-
-      await client.query(
-        `INSERT INTO users (id, username, password, email, role, entity_id, created_at)
-         VALUES ($1, $2, $3, $4, 'admin', $5, CURRENT_TIMESTAMP)
-         ON CONFLICT (id) DO NOTHING`,
-        [
-          `USR-${initialAdmin.Admin_ID}`,
-          initialAdmin.Username || 'admin',
-          adminPassHash,
-          initialAdmin.Email,
-          initialAdmin.Admin_ID,
-        ]
-      );
+      await seedRow('admins', {
+        id: initialAdmin.Admin_ID,
+        username: initialAdmin.Username || 'admin',
+        name: initialAdmin.Name,
+        email: initialAdmin.Email,
+        password: adminPassHash,
+        number: initialAdmin.Number,
+        address_house_name: initialAdmin.Address.House_Name,
+        address_street: initialAdmin.Address.Street,
+        address_city: initialAdmin.Address.City,
+        address_postal_code: initialAdmin.Address.Postal_Code,
+        address_additional_info: initialAdmin.Address.Additional_Info || '',
+        created_at: new Date().toISOString(),
+      });
     }
 
     // 3. Seed Sellers & Users
-    const existingSellers = await client.query(`SELECT count(*) as count FROM sellers`);
-    if (Number(existingSellers.rows[0]?.count || 0) === 0) {
+    if (await countRows('sellers') === 0) {
       console.log('Seeding initial sellers to Cloud SQL...');
       for (const sel of initialSellers) {
         const sellerPassHash = await hashPassword(sel.Password || 'seller123');
-        await client.query(
-          `INSERT INTO sellers (id, username, name, email, password, number, logo, description, status, address_house_name, address_street, address_city, address_postal_code, address_additional_info, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-           ON CONFLICT (id) DO NOTHING`,
-          [
-            sel.Seller_ID,
-            sel.Username || sel.Seller_ID.toLowerCase(),
-            sel.Name,
-            sel.Email,
-            sellerPassHash,
-            sel.Number,
-            sel.Logo,
-            sel.Description,
-            sel.Status,
-            sel.Address.House_Name,
-            sel.Address.Street,
-            sel.Address.City,
-            sel.Address.Postal_Code,
-            sel.Address.Additional_Info || '',
-            sel.Created_At || new Date().toISOString(),
-          ]
-        );
-
-        await client.query(
-          `INSERT INTO users (id, username, password, email, role, entity_id, created_at)
-           VALUES ($1, $2, $3, $4, 'seller', $5, CURRENT_TIMESTAMP)
-           ON CONFLICT (id) DO NOTHING`,
-          [
-            `USR-${sel.Seller_ID}`,
-            sel.Username || sel.Seller_ID.toLowerCase(),
-            sellerPassHash,
-            sel.Email,
-            sel.Seller_ID,
-          ]
-        );
+        await seedRow('sellers', {
+          id: sel.Seller_ID,
+          username: sel.Username || sel.Seller_ID.toLowerCase(),
+          name: sel.Name,
+          email: sel.Email,
+          password: sellerPassHash,
+          number: sel.Number,
+          logo: sel.Logo,
+          description: sel.Description,
+          status: sel.Status,
+          address_house_name: sel.Address.House_Name,
+          address_street: sel.Address.Street,
+          address_city: sel.Address.City,
+          address_postal_code: sel.Address.Postal_Code,
+          address_additional_info: sel.Address.Additional_Info || '',
+          created_at: sel.Created_At || new Date().toISOString(),
+        });
       }
     }
 
     // 4. Seed Customers & Users
-    const existingCusts = await client.query(`SELECT count(*) as count FROM customers`);
-    if (Number(existingCusts.rows[0]?.count || 0) === 0) {
+    if (await countRows('customers') === 0) {
       console.log('Seeding initial customers to Cloud SQL...');
       for (const cust of initialCustomers) {
         const custPassHash = await hashPassword(cust.Password || 'password123');
-        await client.query(
-          `INSERT INTO customers (id, username, name, email, password, number, address_house_name, address_street, address_city, address_postal_code, address_additional_info)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-           ON CONFLICT (id) DO NOTHING`,
-          [
-            cust.Customer_ID,
-            cust.Username || cust.Customer_ID.toLowerCase(),
-            cust.Name,
-            cust.Email,
-            custPassHash,
-            cust.Number,
-            cust.Address.House_Name,
-            cust.Address.Street,
-            cust.Address.City,
-            cust.Address.Postal_Code,
-            cust.Address.Additional_Info || '',
-          ]
-        );
-
-        await client.query(
-          `INSERT INTO users (id, username, password, email, role, entity_id, created_at)
-           VALUES ($1, $2, $3, $4, 'customer', $5, CURRENT_TIMESTAMP)
-           ON CONFLICT (id) DO NOTHING`,
-          [
-            `USR-${cust.Customer_ID}`,
-            cust.Username || cust.Customer_ID.toLowerCase(),
-            custPassHash,
-            cust.Email,
-            cust.Customer_ID,
-          ]
-        );
+        await seedRow('customers', {
+          id: cust.Customer_ID,
+          username: cust.Username || cust.Customer_ID.toLowerCase(),
+          name: cust.Name,
+          email: cust.Email,
+          password: custPassHash,
+          number: cust.Number,
+          address_house_name: cust.Address.House_Name,
+          address_street: cust.Address.Street,
+          address_city: cust.Address.City,
+          address_postal_code: cust.Address.Postal_Code,
+          address_additional_info: cust.Address.Additional_Info || '',
+          created_at: new Date().toISOString(),
+        });
       }
     }
 
     // 5. Seed Products
-    const existingProducts = await client.query(`SELECT count(*) as count FROM products`);
-    if (Number(existingProducts.rows[0]?.count || 0) === 0) {
+    if (await countRows('products') === 0) {
       console.log('Seeding initial products to Cloud SQL...');
       for (const prod of initialProducts) {
-        await client.query(
-          `INSERT INTO products (id, name, image, description, price, voucher, stock, product_status, category_id, seller_id, review_id, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)
-           ON CONFLICT (id) DO NOTHING`,
-          [
-            prod.Product_ID,
-            prod.Name,
-            prod.Image || '',
-            prod.Description || '',
-            Number(prod.Price),
-            prod.Voucher || '',
-            Number(prod.Stock),
-            prod.Product_Status,
-            prod.Category_ID,
-            prod.Seller_ID,
-            prod.Review_ID || null,
-          ]
-        );
+        await seedRow('products', {
+          id: prod.Product_ID,
+          name: prod.Name,
+          image: prod.Image || '',
+          description: prod.Description || '',
+          price: Number(prod.Price),
+          voucher: prod.Voucher || '',
+          stock: Number(prod.Stock),
+          product_status: prod.Product_Status,
+          category_id: prod.Category_ID,
+          seller_id: prod.Seller_ID,
+          created_at: new Date().toISOString(),
+        });
       }
     }
 
     // 6. Seed Reviews
-    const existingReviews = await client.query(`SELECT count(*) as count FROM reviews`);
-    if (Number(existingReviews.rows[0]?.count || 0) === 0) {
+    if (await countRows('reviews') === 0) {
       console.log('Seeding initial reviews to Cloud SQL...');
       for (const rev of initialReviews) {
-        await client.query(
-          `INSERT INTO reviews (id, product_id, customer_id, customer_name, review_text, rating, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           ON CONFLICT (id) DO NOTHING`,
-          [
-            rev.Review_ID,
-            rev.Product_ID,
-            rev.Customer_ID,
-            rev.Customer_Name,
-            rev.Review_text,
-            Number(rev.Rating),
-            rev.Created_At || new Date().toISOString(),
-          ]
-        );
+        await seedRow('reviews', {
+          id: rev.Review_ID,
+          product_id: rev.Product_ID,
+          customer_id: rev.Customer_ID,
+          customer_name: rev.Customer_Name,
+          review_text: rev.Review_text,
+          rating: Number(rev.Rating),
+          created_at: rev.Created_At || new Date().toISOString(),
+        });
       }
     }
 
     // 7. Seed Orders
-    const existingOrders = await client.query(`SELECT count(*) as count FROM orders`);
-    if (Number(existingOrders.rows[0]?.count || 0) === 0) {
+    if (await countRows('orders') === 0) {
       console.log('Seeding initial orders to Cloud SQL...');
       for (const ord of initialOrders) {
-        await client.query(
-          `INSERT INTO orders (id, tracking_id, customer_id, items_json, subtotal, shipping_fee, status, shipping_address_json, billing_address_json, additional_info, order_placed_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-           ON CONFLICT (id) DO NOTHING`,
-          [
-            ord.Order_ID,
-            ord.Tracking_ID,
-            ord.Customer_ID,
-            JSON.stringify(ord.Items),
-            Number(ord.Subtotal),
-            Number(ord.Shipping_Fee),
-            ord.Status,
-            JSON.stringify(ord.Shipping_Address),
-            JSON.stringify(ord.Billing_Address),
-            ord.Additional_Info || '',
-            ord.Order_Placed_At || new Date().toISOString(),
-          ]
-        );
+        await seedRow('orders', {
+          id: ord.Order_ID,
+          tracking_id: ord.Tracking_ID,
+          customer_id: ord.Customer_ID,
+          items_json: JSON.stringify(ord.Items),
+          subtotal: Number(ord.Subtotal),
+          shipping_fee: Number(ord.Shipping_Fee),
+          status: ord.Status,
+          shipping_address_json: JSON.stringify(ord.Shipping_Address),
+          billing_address_json: JSON.stringify(ord.Billing_Address),
+          additional_info: ord.Additional_Info || '',
+          order_placed_at: ord.Order_Placed_At || new Date().toISOString(),
+        });
       }
     }
 
@@ -278,5 +188,6 @@ export async function seedDatabaseIfEmpty() {
     console.log('database seeding check complete');
   } catch (error) {
     console.error('Error seeding database:', error);
+    throw error;
   }
 }

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { query, withTransaction } from '../db/index.ts';
 import { requireRole, type AuthRequest } from '../middleware/auth.ts';
+import { isIdentifier, isText, respondApiError } from '../utils.ts';
 import type { Review } from '../../src/types.ts';
 
 const router = Router();
@@ -8,13 +9,16 @@ const router = Router();
 router.get('/api/reviews', async (req, res) => {
   try {
     const { productId, sellerId } = req.query;
+    if ((productId !== undefined && !isIdentifier(productId)) || (sellerId !== undefined && !isIdentifier(sellerId))) {
+      return res.status(400).json({ error: 'Invalid productId or sellerId filter.' });
+    }
     let result;
     if (productId && typeof productId === 'string') {
-      result = await query(`SELECT r.* FROM reviews r WHERE r.product_id = $1 ORDER BY r.created_at DESC`, [productId]);
+      result = await query(`SELECT * FROM gocart_reviews_by_product($1)`, [productId]);
     } else if (sellerId && typeof sellerId === 'string') {
-      result = await query(`SELECT r.* FROM reviews r JOIN products p ON p.id = r.product_id WHERE p.seller_id = $1 ORDER BY r.created_at DESC`, [sellerId]);
+      result = await query(`SELECT * FROM gocart_reviews_by_seller($1)`, [sellerId]);
     } else {
-      result = await query(`SELECT * FROM reviews ORDER BY created_at DESC`);
+      result = await query(`SELECT * FROM gocart_reviews_list()`);
     }
     const formatted: Review[] = result.rows.map((r: any) => ({
       Review_ID: r.id, Product_ID: r.product_id, Customer_ID: r.customer_id,
@@ -23,25 +27,26 @@ router.get('/api/reviews', async (req, res) => {
     }));
     res.json(formatted);
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to fetch reviews' });
+    respondApiError(res, error, 'Error fetching reviews:');
   }
 });
 
 router.post('/api/reviews', requireRole('customer'), async (req: AuthRequest, res) => {
   try {
     const { Product_ID, Review_text, Rating } = req.body;
-    const ratingNum = Number(Rating);
-    if (!Product_ID || !Number.isInteger(ratingNum) || ratingNum < 1 || ratingNum > 5) return res.status(400).json({ error: 'Product_ID and a rating from 1 to 5 are required' });
-    const product = await query(`SELECT id FROM products WHERE id = $1`, [Product_ID]);
+    const ratingNum = Rating;
+    if (!isIdentifier(Product_ID) || typeof ratingNum !== 'number' || !Number.isInteger(ratingNum) || ratingNum < 1 || ratingNum > 5 || !isText(Review_text ?? '', 5000, true)) {
+      return res.status(400).json({ error: 'A valid Product_ID, review text up to 5000 characters, and integer rating from 1 to 5 are required.' });
+    }
+    const product = await query(`SELECT * FROM gocart_product_get($1)`, [Product_ID]);
     if (!product.rows.length) return res.status(404).json({ error: 'Product not found' });
-    const customer = await query(`SELECT name FROM customers WHERE id = $1`, [req.user!.sub]);
+    const customer = await query(`SELECT * FROM gocart_customer_get($1)`, [req.user!.sub]);
     if (!customer.rows.length) return res.status(401).json({ error: 'Customer account not found' });
     const id = `REV-${Date.now()}`;
     const customerName = (customer.rows[0] as any).name || req.user!.name;
-    const reviewText = typeof Review_text === 'string' ? Review_text : '';
+    const reviewText = (Review_text ?? '').trim();
     await withTransaction((client) => client.query(
-      `INSERT INTO reviews (id, product_id, customer_id, customer_name, review_text, rating, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
+      `SELECT * FROM gocart_review_create($1, $2, $3, $4, $5, $6)`,
       [id, Product_ID, req.user!.sub, customerName, reviewText, ratingNum]
     ));
     res.status(201).json({
@@ -49,7 +54,7 @@ router.post('/api/reviews', requireRole('customer'), async (req: AuthRequest, re
       Review_text: reviewText, Rating: ratingNum, Created_At: new Date().toISOString(),
     });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to create review' });
+    respondApiError(res, error, 'Error creating review:');
   }
 });
 
