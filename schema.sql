@@ -322,6 +322,10 @@ CREATE INDEX IF NOT EXISTS idx_order_items_seller ON order_items(seller_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_product_snapshot ON order_items(product_id_snapshot);
 CREATE INDEX IF NOT EXISTS idx_order_items_seller_snapshot ON order_items(seller_id_snapshot);
 
+
+ALTER TABLE customers DROP COLUMN IF EXISTS username CASCADE, DROP COLUMN IF EXISTS email CASCADE, DROP COLUMN IF EXISTS password CASCADE;
+ALTER TABLE sellers DROP COLUMN IF EXISTS username CASCADE, DROP COLUMN IF EXISTS email CASCADE, DROP COLUMN IF EXISTS password CASCADE;
+ALTER TABLE admins DROP COLUMN IF EXISTS username CASCADE, DROP COLUMN IF EXISTS email CASCADE, DROP COLUMN IF EXISTS password CASCADE;
 -- 4. FOREIGN KEY & DATA CONSTRAINTS
 
 -- USERS TABLE CONSTRAINTS
