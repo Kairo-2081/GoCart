@@ -6,3 +6,8 @@ coverage/
 *.log
 
 !.env.example
+
+# secrets
+.env
+.env.*
+!.env.example
