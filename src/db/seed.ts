@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { withTransaction } from './index.ts';
@@ -11,6 +12,16 @@ import {
   initialCustomers,
   initialAdmin,
 } from '../data/seedData.ts';
+
+/** Demo accounts get a fresh random password on every seed, so nobody can sign in as them. */
+const unguessablePassword = () => randomBytes(24).toString('hex');
+
+/** The admin password comes from the environment. Too short or missing means no admin is created. */
+export const MIN_ADMIN_PASSWORD_LENGTH = 12;
+export const readAdminPassword = (env: NodeJS.ProcessEnv = process.env): string | null => {
+  const value = env.GOCART_ADMIN_PASSWORD ?? '';
+  return value.length >= MIN_ADMIN_PASSWORD_LENGTH ? value : null;
+};
 
 export async function migrateExistingPasswordsToBcrypt() {
   try {
@@ -61,14 +72,18 @@ export async function seedDatabaseIfEmpty() {
     }
 
     // 2. Seed Admins & Users
-    if (await countRows('admins') === 0) {
+    const adminPassword = readAdminPassword();
+    if (await countRows('admins') === 0 && !adminPassword) {
+      console.warn(`No admin account created: set GOCART_ADMIN_PASSWORD (at least ${MIN_ADMIN_PASSWORD_LENGTH} characters) and restart.`);
+    }
+    if (adminPassword && await countRows('admins') === 0) {
       console.log('Seeding initial admin...');
-      const adminPassHash = await hashPassword(initialAdmin.Password || 'admin123');
+      const adminPassHash = await hashPassword(adminPassword);
       await seedRow('admins', {
         id: initialAdmin.Admin_ID,
         username: initialAdmin.Username || 'admin',
         name: initialAdmin.Name,
-        email: initialAdmin.Email,
+        email: process.env.GOCART_ADMIN_EMAIL?.trim() || initialAdmin.Email,
         password: adminPassHash,
         number: initialAdmin.Number,
         address_house_name: initialAdmin.Address.House_Name,
@@ -84,7 +99,7 @@ export async function seedDatabaseIfEmpty() {
     if (await countRows('sellers') === 0) {
       console.log('Seeding initial sellers to Cloud SQL...');
       for (const sel of initialSellers) {
-        const sellerPassHash = await hashPassword(sel.Password || 'seller123');
+        const sellerPassHash = await hashPassword(unguessablePassword());
         await seedRow('sellers', {
           id: sel.Seller_ID,
           username: sel.Username || sel.Seller_ID.toLowerCase(),
@@ -109,7 +124,7 @@ export async function seedDatabaseIfEmpty() {
     if (await countRows('customers') === 0) {
       console.log('Seeding initial customers to Cloud SQL...');
       for (const cust of initialCustomers) {
-        const custPassHash = await hashPassword(cust.Password || 'password123');
+        const custPassHash = await hashPassword(unguessablePassword());
         await seedRow('customers', {
           id: cust.Customer_ID,
           username: cust.Username || cust.Customer_ID.toLowerCase(),
