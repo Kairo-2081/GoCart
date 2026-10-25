@@ -18,7 +18,7 @@ import statsRoutes from './routes/stats.routes.ts';
 import { assertJwtSecret, authenticateApiRequest } from './middleware/auth.ts';
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Fail before serving requests or starting database work if signing is misconfigured.
 assertJwtSecret();
