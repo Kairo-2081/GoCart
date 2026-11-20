@@ -50,10 +50,24 @@ GoCart is a full-stack marketplace where customers browse and buy, sellers list 
 └── vercel.json          Vercel build and routing configuration
 ```
 
-## Setup
+## Getting started
 
-1. Install dependencies:
-   `npm install`
+### Prerequisites
+
+- Node.js 20.6 or newer (the test script uses `node --import`).
+- A PostgreSQL database that the server can reach, for example a Supabase project.
+
+### Install and run
+
+```bash
+git clone https://github.com/Kairo-2081/GoCart.git
+cd GoCart
+npm install
+cp .env.example .env     # then fill in the values described under Configuration
+npm run dev
+```
+
+`npm run dev` starts one Express server that serves both the API and the React app (through Vite's middleware). Open http://localhost:3000, or the port you set in `PORT`.
 
 2. Configure app-issued JWT authentication. Set `JWT_SECRET` in a local `.env` file (or your deployment's environment settings). Generate a unique secret with Node.js:
    `node -e "console.log(require('node:crypto').randomBytes(64).toString('hex'))"`
