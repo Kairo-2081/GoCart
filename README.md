@@ -69,10 +69,25 @@ npm run dev
 
 `npm run dev` starts one Express server that serves both the API and the React app (through Vite's middleware). Open http://localhost:3000, or the port you set in `PORT`.
 
-2. Configure app-issued JWT authentication. Set `JWT_SECRET` in a local `.env` file (or your deployment's environment settings). Generate a unique secret with Node.js:
-   `node -e "console.log(require('node:crypto').randomBytes(64).toString('hex'))"`
+## Configuration
 
-   Add the generated value to `.env` as `JWT_SECRET=<generated-value>`. Keep `.env` out of source control and configure the same variable in the production host's secret/environment settings. The server requires at least 32 characters and exits at startup if `JWT_SECRET` is missing or too short; do not use a checked-in, hard-coded, or fallback secret. Tokens are signed with HS256, expire after one hour, and are stored in an HttpOnly, SameSite cookie. Each token ID is persisted in `auth_sessions`; logout revokes it server-side.
+Copy `.env.example` to `.env` and fill it in. Keep `.env` out of source control, and set the same variables in your host's environment or secret settings for production.
+
+| Variable | Purpose |
+| --- | --- |
+| `JWT_SECRET` | Required. At least 32 characters. The server exits at startup if it is missing or too short. |
+| `SUPABASE_DB_URL`, or `SUPABASE_DB_HOST`, `SUPABASE_DB_PORT`, `SUPABASE_DB_USER`, `SUPABASE_DB_PASSWORD`, `SUPABASE_DB_NAME` | PostgreSQL connection settings. The server also reads `DATABASE_URL`. |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Supabase project settings. |
+| `GOCART_ADMIN_EMAIL`, `GOCART_ADMIN_PASSWORD` | Create the first admin on startup. If the password is missing or shorter than 12 characters, no admin is created. |
+| `PORT` | HTTP port. Defaults to `3000`. |
+
+Generate a unique `JWT_SECRET` with Node.js:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(64).toString('hex'))"
+```
+
+Do not use a checked-in, hard-coded or fallback secret.
 
    API requests are checked by centralized authentication middleware before body parsing or route handlers. Login and customer/seller registration are guest-accessible; other API routes require an active session, with role and ownership checks applied by their handlers. Admin accounts are created by an authenticated admin. The frontend/static assets remain accessible so visitors can reach sign-in.
 
