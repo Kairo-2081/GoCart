@@ -2,6 +2,21 @@
 
 GoCart is a full-stack marketplace where customers browse and buy, sellers list and manage their own products, and admins oversee the platform. A React single-page app talks to an Express API backed by PostgreSQL, with role-based access control and cookie-based JWT sessions.
 
+## Contents
+
+- [Features](#features)
+- [Tech stack](#tech-stack)
+- [Project structure](#project-structure)
+- [Getting started](#getting-started)
+- [Configuration](#configuration)
+- [First run](#first-run)
+- [Authentication](#authentication)
+- [Database](#database)
+- [API overview](#api-overview)
+- [Scripts](#scripts)
+- [Testing](#testing)
+- [Deployment](#deployment)
+
 ## Features
 
 **Customers**
