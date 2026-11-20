@@ -112,3 +112,33 @@ PostgreSQL DDL and routines live in `schema.sql`. The main tables are `users`, `
 - Order statuses: `placed`, `processing`, `shipped`, `delivered`, `cancelled`.
 
 The ERD, keys, cardinalities, normalization and referential actions are documented in [docs/database-design.md](docs/database-design.md).
+
+## API overview
+
+"Guest" routes need no session, "signed in" routes need any valid session, and the rest need the listed role. See [Authentication](#authentication) for how sessions work.
+
+| Resource | Routes | Access |
+| --- | --- | --- |
+| Auth | `POST /api/auth/login` | guest |
+| | `GET /api/auth/me`, `POST /api/auth/logout` | signed in |
+| | `POST /api/auth/role` | admin |
+| Products | `GET /api/products` | signed in |
+| | `POST /api/products`, `PATCH /api/products/:id`, `PUT /api/products/:id/status`, `DELETE /api/products/:id` | seller, admin |
+| Categories | `GET /api/categories` | signed in |
+| | `POST /api/categories`, `PATCH /api/categories/:id`, `DELETE /api/categories/:id` | admin |
+| Cart | `GET`, `POST /api/cart`, `PATCH`, `DELETE /api/cart/:cartId` | customer |
+| Orders | `GET /api/orders` | customer, seller, admin |
+| | `POST /api/orders` | customer |
+| | `PUT /api/orders/:id/status` | seller, admin |
+| Reviews | `GET /api/reviews` | signed in |
+| | `POST /api/reviews` | customer |
+| Customers | `POST /api/customers` (register) | guest |
+| | `PATCH /api/customers/:id` | customer, admin |
+| | `GET /api/customers` | admin |
+| Sellers | `POST /api/sellers` (register) | guest |
+| | `GET /api/sellers` | signed in |
+| | `PUT /api/sellers/:id/status` | admin |
+| Admins | `GET`, `POST /api/admins`, `GET /api/admin/users`, `GET /api/stats`, `POST /api/reset-seed` | admin |
+| Stats | `GET /api/stats/top-products`, `/top-sellers`, `/trending-products` | signed in |
+| | `GET /api/stats/top-customers`, `/category-performance` | admin |
+| Status | `GET /api/db/status` | signed in |
