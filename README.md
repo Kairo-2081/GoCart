@@ -142,3 +142,15 @@ The ERD, keys, cardinalities, normalization and referential actions are document
 | Stats | `GET /api/stats/top-products`, `/top-sellers`, `/trending-products` | signed in |
 | | `GET /api/stats/top-customers`, `/category-performance` | admin |
 | Status | `GET /api/db/status` | signed in |
+
+## Scripts
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Start the API and the Vite dev middleware with `tsx`. |
+| `npm run build` | Build the frontend with Vite and bundle the server to `dist/server.cjs`. |
+| `NODE_ENV=production npm start` | Run the built server, which serves `dist/` and the API. |
+| `npm run preview` | Preview the Vite build. |
+| `npm run lint` | Type-check with `tsc --noEmit`. |
+| `npm test` | Run the tests in `tests/`. |
+| `npm run clean` | Remove build output (uses `rm -rf`). |
