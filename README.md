@@ -154,3 +154,7 @@ The ERD, keys, cardinalities, normalization and referential actions are document
 | `npm run lint` | Type-check with `tsc --noEmit`. |
 | `npm test` | Run the tests in `tests/`. |
 | `npm run clean` | Remove build output (uses `rm -rf`). |
+
+## Testing
+
+`npm test` runs `tests/*.test.ts` with Node's built-in test runner. The current tests cover the admin seeding rules: no admin without a password, a minimum password length, and no hard-coded passwords in the seed data. `npm run lint` type-checks the whole project.
