@@ -29,6 +29,27 @@ GoCart is a full-stack marketplace where customers browse and buy, sellers list 
 | Tooling | `tsx`, `esbuild`, Node's built-in test runner |
 | Hosting | Vercel configuration included (`vercel.json`) |
 
+## Project structure
+
+```text
+.
+├── server/              Express API
+│   ├── index.ts         App entry: auth middleware, routers, Vite (dev) or static files (production)
+│   ├── middleware/      JWT authentication and role checks
+│   ├── routes/          One router per resource: auth, products, orders, cart, reviews, ...
+│   └── db/              Database access, password handling, seeding
+├── src/                 React app
+│   ├── components/      admin, customer, seller, storefront and layout components
+│   ├── contexts/        Auth and theme context
+│   ├── hooks/           Cart and market-data hooks
+│   ├── lib/api.ts       API client
+│   └── db/, data/       Database layer and seed data
+├── schema.sql           PostgreSQL schema, constraints, triggers and queries
+├── docs/                Database design document (ERD, keys, normalization)
+├── tests/               Node test-runner tests
+└── vercel.json          Vercel build and routing configuration
+```
+
 ## Setup
 
 1. Install dependencies:
