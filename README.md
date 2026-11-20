@@ -2,6 +2,22 @@
 
 GoCart is a full-stack marketplace where customers browse and buy, sellers list and manage their own products, and admins oversee the platform. A React single-page app talks to an Express API backed by PostgreSQL, with role-based access control and cookie-based JWT sessions.
 
+## Features
+
+**Customers**
+- Browse products and categories, and see top-selling and trending products and top sellers.
+- Keep a cart, place orders and follow their status: `placed`, `processing`, `shipped`, `delivered` or `cancelled`.
+- Review products and edit their own profile.
+
+**Sellers**
+- Register a seller account and manage their own products: create, edit, change status and delete.
+- Move orders through the fulfilment statuses.
+
+**Admins**
+- Manage categories and admin accounts.
+- Set a seller's status to `pending`, `approved`, `rejected` or `suspended`. A database trigger rejects product writes from suspended or rejected sellers.
+- View customers and platform statistics such as top customers and category performance, and reset the demo data.
+
 ## Setup
 
 1. Install dependencies:
