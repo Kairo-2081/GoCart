@@ -104,4 +104,11 @@ On startup the server applies `schema.sql` and seeds demo data if the tables are
 - Handlers then apply role and ownership checks. Admin accounts can only be created by a signed-in admin.
 - The frontend and static assets stay public so visitors can reach the sign-in screen.
 
-4. Database model, ERD, keys, cardinalities, normalization, and referential actions are documented in [docs/database-design.md](docs/database-design.md). PostgreSQL DDL and routines are in `schema.sql`; startup applies the schema and seeds demo data if tables are empty.
+## Database
+
+PostgreSQL DDL and routines live in `schema.sql`. The main tables are `users`, `customers`, `sellers`, `admins`, `categories`, `products`, `cart`, `orders`, `order_items` and `reviews`. Three more support the platform: `auth_sessions`, `seller_status_audit` and `order_status_audit`.
+
+- Seller statuses: `pending`, `approved`, `rejected`, `suspended`.
+- Order statuses: `placed`, `processing`, `shipped`, `delivered`, `cancelled`.
+
+The ERD, keys, cardinalities, normalization and referential actions are documented in [docs/database-design.md](docs/database-design.md).
