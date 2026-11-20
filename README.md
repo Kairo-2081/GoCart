@@ -89,6 +89,13 @@ node -e "console.log(require('node:crypto').randomBytes(64).toString('hex'))"
 
 Do not use a checked-in, hard-coded or fallback secret.
 
+## First run
+
+On startup the server applies `schema.sql` and seeds demo data if the tables are empty. The seed data contains no passwords (a test enforces this), so there is no default login.
+
+- To get an admin, set `GOCART_ADMIN_EMAIL` and `GOCART_ADMIN_PASSWORD` (12 or more characters) before the first start. Further admins are created by a signed-in admin.
+- Customers and sellers can register themselves.
+
    API requests are checked by centralized authentication middleware before body parsing or route handlers. Login and customer/seller registration are guest-accessible; other API routes require an active session, with role and ownership checks applied by their handlers. Admin accounts are created by an authenticated admin. The frontend/static assets remain accessible so visitors can reach sign-in.
 
 3. Run the app:
