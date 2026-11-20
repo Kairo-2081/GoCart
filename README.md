@@ -18,6 +18,17 @@ GoCart is a full-stack marketplace where customers browse and buy, sellers list 
 - Set a seller's status to `pending`, `approved`, `rejected` or `suspended`. A database trigger rejects product writes from suspended or rejected sellers.
 - View customers and platform statistics such as top customers and category performance, and reset the demo data.
 
+## Tech stack
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | React 19, TypeScript 5.8, Vite 6, Tailwind CSS 4, Motion, Lucide icons |
+| Backend | Node.js, Express 4, `pg` |
+| Database | PostgreSQL (the environment template targets Supabase, but any PostgreSQL works) |
+| Auth | `jsonwebtoken` (HS256) in HttpOnly cookies, `bcryptjs` for password hashes |
+| Tooling | `tsx`, `esbuild`, Node's built-in test runner |
+| Hosting | Vercel configuration included (`vercel.json`) |
+
 ## Setup
 
 1. Install dependencies:
