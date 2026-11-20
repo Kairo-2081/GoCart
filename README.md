@@ -104,7 +104,4 @@ On startup the server applies `schema.sql` and seeds demo data if the tables are
 - Handlers then apply role and ownership checks. Admin accounts can only be created by a signed-in admin.
 - The frontend and static assets stay public so visitors can reach the sign-in screen.
 
-3. Run the app:
-   `npm run dev`
-
 4. Database model, ERD, keys, cardinalities, normalization, and referential actions are documented in [docs/database-design.md](docs/database-design.md). PostgreSQL DDL and routines are in `schema.sql`; startup applies the schema and seeds demo data if tables are empty.
