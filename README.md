@@ -158,3 +158,9 @@ The ERD, keys, cardinalities, normalization and referential actions are document
 ## Testing
 
 `npm test` runs `tests/*.test.ts` with Node's built-in test runner. The current tests cover the admin seeding rules: no admin without a password, a minimum password length, and no hard-coded passwords in the seed data. `npm run lint` type-checks the whole project.
+
+## Deployment
+
+`vercel.json` builds `server/index.ts` with `@vercel/node` (including `schema.sql`), sends `/api/*` to it and serves everything else from `dist/`. Set `JWT_SECRET` and the database variables in the Vercel project settings.
+
+To self-host, run `npm run build`, set the same environment variables, and start the server with `NODE_ENV=production npm start`.
