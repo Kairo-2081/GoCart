@@ -96,7 +96,13 @@ On startup the server applies `schema.sql` and seeds demo data if the tables are
 - To get an admin, set `GOCART_ADMIN_EMAIL` and `GOCART_ADMIN_PASSWORD` (12 or more characters) before the first start. Further admins are created by a signed-in admin.
 - Customers and sellers can register themselves.
 
-   API requests are checked by centralized authentication middleware before body parsing or route handlers. Login and customer/seller registration are guest-accessible; other API routes require an active session, with role and ownership checks applied by their handlers. Admin accounts are created by an authenticated admin. The frontend/static assets remain accessible so visitors can reach sign-in.
+## Authentication
+
+- Sessions use JWTs signed with HS256. They expire after one hour and travel in an HttpOnly, `SameSite=Strict` cookie.
+- Each token ID is stored in the `auth_sessions` table, so logging out revokes the token on the server.
+- Centralized middleware checks every API request before body parsing or route handlers run. Login (`POST /api/auth/login`) and customer and seller registration are the only guest endpoints; every other API request needs a valid session.
+- Handlers then apply role and ownership checks. Admin accounts can only be created by a signed-in admin.
+- The frontend and static assets stay public so visitors can reach the sign-in screen.
 
 3. Run the app:
    `npm run dev`
