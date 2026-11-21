@@ -175,3 +175,40 @@ Nothing comes from a production account.
 </td>
 </tr>
 </table>
+
+#### Seller
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/app-seller-catalog.jpg" />
+<img src="./.github/assets/readme/app-seller-catalog-light.jpg" alt="Seller studio for Banani Craft House with an Approved badge, totals and a product table" width="100%" />
+</picture>
+<p><b>Run the catalogue.</b> An approved store sees its products, stock and status next to totals for revenue and orders.</p>
+</td>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/app-seller-new-product.jpg" />
+<img src="./.github/assets/readme/app-seller-new-product-light.jpg" alt="Create New Product Listing dialog with title, category, status, price, stock, voucher, image URL and description" width="100%" />
+</picture>
+<p><b>List a product.</b> Title, category, status, price, stock, an optional voucher code, an image URL and a description.</p>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/app-seller-fulfillment.jpg" />
+<img src="./.github/assets/readme/app-seller-fulfillment-light.jpg" alt="Incoming orders tab showing an order, its items, the destination address and a status selector" width="100%" />
+</picture>
+<p><b>Fulfil orders.</b> Each order lists this seller's items and the destination; a selector moves it through the statuses.</p>
+</td>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/app-seller-reviews.jpg" />
+<img src="./.github/assets/readme/app-seller-reviews-light.jpg" alt="Customer product reviews tab for the seller" width="100%" />
+</picture>
+<p><b>Read the feedback.</b> Customer reviews of the seller's products, in one place.</p>
+</td>
+</tr>
+</table>
