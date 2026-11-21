@@ -481,3 +481,17 @@ node -e "console.log(require('node:crypto').randomBytes(64).toString('hex'))"   
 ├── tests/               Node test-runner tests
 └── vercel.json          Vercel build and routing configuration
 ```
+
+## Project status and next steps
+
+GoCart is a working marketplace built as a database-focused course project. What
+is solid: the schema, the checkout transaction, role-based access and revocable
+sessions. What is not finished:
+
+- **Shipping fee is trusted from the browser.** `POST /api/orders` accepts any non-negative `Shipping_Fee`. The server should work it out from the subtotal.
+- **No payments.** Checkout records an order; there is no payment step or gateway.
+- **Tests are thin.** Only the admin seeding rules are covered; routes and UI have no tests.
+- **No licence file yet.** Add one before reusing the code.
+
+Next steps worth doing: compute shipping on the server, add API tests against a
+disposable database, and record a short screen tour for this README.
