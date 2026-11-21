@@ -335,7 +335,7 @@ erDiagram
 | A cart quantity can never exceed stock | `check_cart_stock` trigger, which also serialises cart changes per customer |
 | Checkout is all or nothing | `process_checkout` locks the cart and products, then creates the order, takes the stock and empties the cart in one transaction |
 | Suspended or rejected sellers cannot list | `enforce_seller_status_on_product` trigger |
-| A user's role cannot be changed afterwards | `trigger_prevent_user_role_change` |
+| An account's role is fixed once its profile exists | `trigger_prevent_user_role_change` |
 | Seller and order status history | `seller_status_audit` and `order_status_audit`, filled by triggers |
 
 The application talks to PostgreSQL through plain SQL and `gocart_*` functions
