@@ -341,3 +341,28 @@ erDiagram
 The application talks to PostgreSQL through plain SQL and `gocart_*` functions
 defined in [`schema.sql`](./schema.sql). `server/db` holds the connection pool
 and the password helpers.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    B[Browser<br/>React 19 SPA] -->|fetch, cookie session| X[Express 4 API]
+    X --> M[Auth middleware<br/>JWT and role checks]
+    M --> R[Resource routers<br/>auth, products, orders, cart, ...]
+    R -->|pg pool| P[(PostgreSQL<br/>schema.sql)]
+    X -. development .-> V[Vite middleware]
+    X -. production .-> S[dist/ static files]
+```
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | React 19, TypeScript 5.8, Vite 6, Tailwind CSS 4, Motion, Lucide icons |
+| Backend | Node.js, Express 4, `pg` |
+| Database | PostgreSQL (the environment template targets Supabase, but any PostgreSQL works) |
+| Auth | `jsonwebtoken` (HS256) in HttpOnly cookies, `bcryptjs` for password hashes |
+| Tooling | `tsx`, `esbuild`, Node's built-in test runner |
+| Hosting | Vercel configuration included (`vercel.json`) |
+
+In development one process serves the API and the React app through Vite's
+middleware. In production `npm run build` bundles the server to
+`dist/server.cjs` and the app to `dist/`.
