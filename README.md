@@ -375,3 +375,14 @@ middleware. In production `npm run build` bundles the server to
 - Middleware checks every API request before body parsing or route handlers run. Only sign-in and customer or seller registration are open to guests.
 - Handlers then apply role and ownership checks. Admin accounts can only be created by a signed-in admin, and role changes are not supported.
 - `JWT_SECRET` must be at least 32 characters, or the server refuses to start. The seed data holds no passwords, and a test enforces that.
+
+## Quality
+
+| Check | Command | What it covers |
+| --- | --- | --- |
+| Types | `npm run lint` | `tsc --noEmit` over the whole project |
+| Build | `npm run build` | Vite bundle for the app and an esbuild bundle for the server |
+| Tests | `npm test` | Node test runner: no admin without a password, a minimum password length, and no hard-coded passwords in the seed data |
+
+All three pass on `main`. The tests cover the seeding rules only; the API
+routes and the UI have no automated tests yet.
