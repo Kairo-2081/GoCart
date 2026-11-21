@@ -212,3 +212,40 @@ Nothing comes from a production account.
 </td>
 </tr>
 </table>
+
+#### Admin
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/app-admin-overview.jpg" />
+<img src="./.github/assets/readme/app-admin-overview-light.jpg" alt="Platform admin governance console with market value, active sellers, order throughput and review sentiment" width="100%" />
+</picture>
+<p><b>Oversee the marketplace.</b> Market value, active sellers, order throughput and review sentiment at a glance, with the approval queue below.</p>
+</td>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/app-admin-sellers.jpg" />
+<img src="./.github/assets/readme/app-admin-sellers-light.jpg" alt="Seller approvals table with status filter and Approve, Reject and Suspend buttons" width="100%" />
+</picture>
+<p><b>Approve merchants.</b> Pending stores are approved or rejected; live ones can be suspended.</p>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/app-admin-categories.jpg" />
+<img src="./.github/assets/readme/app-admin-categories-light.jpg" alt="Category registry with a form to add a category and the list of existing categories" width="100%" />
+</picture>
+<p><b>Curate categories.</b> Add, rename and remove categories, each with its product count.</p>
+</td>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/app-admin-products.jpg" />
+<img src="./.github/assets/readme/app-admin-products-light.jpg" alt="Product listing moderation table with a Deactivate Listing button" width="100%" />
+</picture>
+<p><b>Moderate products.</b> Every listing with its merchant, price and status, and a button to deactivate it.</p>
+</td>
+</tr>
+</table>
