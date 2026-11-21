@@ -366,3 +366,12 @@ flowchart LR
 In development one process serves the API and the React app through Vite's
 middleware. In production `npm run build` bundles the server to
 `dist/server.cjs` and the app to `dist/`.
+
+## Security
+
+- Passwords are hashed with `bcryptjs`; older plain-text values are upgraded to a hash the first time that user signs in.
+- Sessions are HS256 JWTs that expire after one hour and travel in an HttpOnly, `SameSite=Strict` cookie. The cookie is `Secure` in production.
+- Each token ID is stored in `auth_sessions`, so logging out revokes the token on the server.
+- Middleware checks every API request before body parsing or route handlers run. Only sign-in and customer or seller registration are open to guests.
+- Handlers then apply role and ownership checks. Admin accounts can only be created by a signed-in admin, and role changes are not supported.
+- `JWT_SECRET` must be at least 32 characters, or the server refuses to start. The seed data holds no passwords, and a test enforces that.
