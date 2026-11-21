@@ -249,3 +249,39 @@ Nothing comes from a production account.
 </td>
 </tr>
 </table>
+
+## How an order moves
+
+```mermaid
+sequenceDiagram
+    actor Seller
+    actor Admin
+    actor Customer
+    participant API as GoCart API
+    participant DB as PostgreSQL
+
+    Seller->>API: Register a store (status pending)
+    Admin->>API: Approve the seller
+    Seller->>API: List a product with price and stock
+    Customer->>API: Add to cart
+    API->>DB: Trigger checks quantity against stock
+    Customer->>API: Place the order
+    API->>DB: CALL process_checkout (lock cart and products)
+    DB-->>API: Order created, stock taken, cart emptied
+    Seller->>API: Set the order to processing, then shipped
+    DB-->>DB: Trigger writes each change to order_status_audit
+    Seller->>API: Set the order to delivered
+    Customer->>API: Reviews the product
+```
+
+### Statuses
+
+| Thing | Statuses, in the usual order | Notes |
+| --- | --- | --- |
+| Seller | `pending` → `approved` · `rejected` · `suspended` | Only approved sellers can list; a trigger blocks product writes from suspended or rejected ones |
+| Order | `placed` → `processing` → `shipped` → `delivered` · `cancelled` | Sellers and admins move it; every change is logged |
+| Product | `active` · `inactive` · `deactivated` | Checkout refuses products that are no longer active |
+
+Shipping is a flat 5 for orders up to 150 and free above that. The browser
+works the fee out and sends it with the order, which the server accepts as long
+as it is not negative (see [Project status](#project-status-and-next-steps)).
