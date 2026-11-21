@@ -27,3 +27,20 @@ own stores, and admins keep the platform honest, all on one PostgreSQL schema.
 </picture>
 
 </div>
+
+<div align="center">
+
+[Product tour](#product-tour) · [How an order moves](#how-an-order-moves) ·
+[Seller approval](#seller-approval) · [Data model](#data-model) ·
+[Architecture](#architecture) · [Security](#security) ·
+[Quality](#quality) · [Get started](#get-started) ·
+[Status](#project-status-and-next-steps)
+
+</div>
+
+GoCart brings a storefront, merchant tools and a governance console into one
+app. Customers browse products from many sellers and check out in one order;
+sellers manage their own catalogue and move orders along; admins approve
+merchants, curate categories and watch the marketplace. The rules that matter
+(stock, seller status, checkout) live in PostgreSQL itself, so the API cannot
+step around them.
