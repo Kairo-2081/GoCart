@@ -386,3 +386,51 @@ middleware. In production `npm run build` bundles the server to
 
 All three pass on `main`. The tests cover the seeding rules only; the API
 routes and the UI have no automated tests yet.
+
+## Get started
+
+### Requirements
+
+- Node.js 20.6 or newer (the test script uses `node --import`).
+- A PostgreSQL database the server can reach, for example a Supabase project.
+
+### Install and run
+
+```bash
+git clone https://github.com/Kairo-2081/GoCart.git
+cd GoCart
+npm install
+cp .env.example .env     # then fill in the values below
+npm run dev
+```
+
+Open http://localhost:3000, or the port in `PORT`. On startup the server applies
+`schema.sql` and seeds demo data if the tables are empty.
+
+### Environment variables
+
+| Variable | Purpose |
+| --- | --- |
+| `JWT_SECRET` | Required. At least 32 characters; the server exits at startup otherwise. |
+| `SUPABASE_DB_URL`, or `SUPABASE_DB_HOST`, `SUPABASE_DB_PORT`, `SUPABASE_DB_USER`, `SUPABASE_DB_PASSWORD`, `SUPABASE_DB_NAME` | PostgreSQL connection settings. `DATABASE_URL` is also read. |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Supabase project settings. |
+| `GOCART_ADMIN_EMAIL`, `GOCART_ADMIN_PASSWORD` | Create the first admin on startup. With no password, or one shorter than 12 characters, no admin is created. |
+| `PORT` | HTTP port, `3000` by default. |
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(64).toString('hex'))"   # a fresh JWT_SECRET
+```
+
+### Useful commands
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Start the API and the Vite dev middleware with `tsx` |
+| `npm run build` | Build the frontend and bundle the server to `dist/server.cjs` |
+| `NODE_ENV=production npm start` | Run the built server, which serves `dist/` and the API |
+| `npm run lint` | Type-check with `tsc --noEmit` |
+| `npm test` | Run the tests in `tests/` |
+
+### Deployment
+
+`vercel.json` builds `server/index.ts` with `@vercel/node` (including `schema.sql`), sends `/api/*` to it and serves everything else from `dist/`. Set `JWT_SECRET` and the database variables in the Vercel project settings. To self-host, run `npm run build`, set the same variables and start with `NODE_ENV=production npm start`.
