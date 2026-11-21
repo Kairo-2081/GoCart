@@ -76,3 +76,47 @@ step around them.
 The demo seed ships four categories, four sellers (one pending), six products
 and a few orders, and **no passwords**, so there is no default login. Run it
 yourself with the steps in [Get started](#get-started).
+
+## Product tour
+
+The images below are real captures of the running app. They were taken from a
+local build against a throwaway PostgreSQL-compatible database, using sample
+data written for the purpose: names and prices are invented, and product,
+seller and logo pictures are generated placeholders, because the machine that
+took the captures had no internet to load the photos the app normally links to.
+Nothing comes from a production account.
+
+<div align="center">
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/gocart-sign-in.jpg" />
+<img src="./.github/assets/readme/gocart-sign-in-light.jpg" alt="Sign-in dialog asking for a username or email and a password" width="100%" />
+</picture>
+<p><b>Sign in.</b> One dialog for every role, with the role decided by the account.</p>
+</td>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/gocart-sign-up.jpg" />
+<img src="./.github/assets/readme/gocart-sign-up-light.jpg" alt="Account creation form for a customer with name, email, password, phone and address fields" width="100%" />
+</picture>
+<p><b>Create an account.</b> Customers and merchants register themselves; admins cannot.</p>
+</td>
+</tr>
+</table>
+
+<p>
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/gocart-mobile-landing.jpg" />
+<img src="./.github/assets/readme/gocart-mobile-landing-light.jpg" alt="GoCart landing page in a phone-sized viewport" width="250" />
+</picture>
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/gocart-mobile-storefront.jpg" />
+<img src="./.github/assets/readme/gocart-mobile-storefront-light.jpg" alt="GoCart storefront on a phone with category chips, filters and a product card" width="250" />
+</picture>
+</p>
+<p><b>On a phone.</b> The same app at a 390-pixel viewport: the portals stack, and the catalogue becomes a single column.</p>
+
+</div>
