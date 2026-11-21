@@ -103,6 +103,10 @@ export function useMarketData({ refreshCart }: UseMarketDataOptions) {
       }
       return;
     }
+    if (!hadAuthenticatedUser.current) {
+      // The catalogue endpoints need a session, so the load at mount fails for a signed-out visitor.
+      void loadInitialData();
+    }
     hadAuthenticatedUser.current = true;
     void loadRoleData(currentRole, currentUser);
   }, [currentRole, currentUser, isAuthLoading, isLoggedIn, loadInitialData, loadRoleData]);
