@@ -64,3 +64,15 @@ step around them.
 | **Customer** | Catalogue with search, category filters, price slider and stock filter; trending, top-rated and top-seller panels; cart; checkout; order history with tracking IDs; product reviews; profile and address | No, anyone can register |
 | **Seller** | Product listings (create, edit, change status, delete); incoming orders with a status selector; store totals for products, revenue and orders; customer reviews of their products | Yes, an admin must approve the store |
 | **Admin** | Governance dashboard with market value, order throughput and review sentiment; seller approvals and suspensions; category registry; product moderation; admin accounts | Not self-service: only a signed-in admin can create another admin |
+
+## Try it
+
+| Role | What you can try |
+| --- | --- |
+| Customer | Register from the landing page, then browse, add to cart and check out. |
+| Seller | Register as a merchant. The store stays `pending` until an admin approves it. |
+| Admin | Set `GOCART_ADMIN_EMAIL` and `GOCART_ADMIN_PASSWORD` (12 or more characters) before the first start to create the first admin. |
+
+The demo seed ships four categories, four sellers (one pending), six products
+and a few orders, and **no passwords**, so there is no default login. Run it
+yourself with the steps in [Get started](#get-started).
