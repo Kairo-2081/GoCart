@@ -73,8 +73,8 @@ step around them.
 | Seller | Register as a merchant. The store stays `pending` until an admin approves it. |
 | Admin | Set `GOCART_ADMIN_EMAIL` and `GOCART_ADMIN_PASSWORD` (12 or more characters) before the first start to create the first admin. |
 
-The demo seed ships four categories, four sellers (one pending), six products
-and a few orders, and **no passwords**, so there is no default login. Run it
+The demo seed ships four categories, three sellers (one pending), six products
+and two orders, and **no passwords**, so there is no default login. Run it
 yourself with the steps in [Get started](#get-started).
 
 ## Product tour
