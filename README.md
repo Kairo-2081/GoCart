@@ -461,3 +461,23 @@ node -e "console.log(require('node:crypto').randomBytes(64).toString('hex'))"   
 | Admin | `GET`, `POST /api/admins`, `GET /api/stats`, `POST /api/reset-seed` | admin |
 | Stats | `GET /api/stats/top-products`, `/top-sellers`, `/trending-products` | signed in |
 | | `GET /api/stats/top-customers`, `/category-performance` | admin |
+
+## Project layout
+
+```text
+.
+├── server/              Express API
+│   ├── index.ts         Entry point: auth middleware, routers, Vite (dev) or static files (production)
+│   ├── middleware/      JWT authentication and role checks
+│   ├── routes/          One router per resource: auth, products, orders, cart, reviews, ...
+│   └── db/              Database access, password handling, seeding
+├── src/                 React app
+│   ├── components/      admin, customer, seller, storefront and layout components
+│   ├── contexts/        Auth and theme context
+│   ├── hooks/           Cart and market-data hooks
+│   └── lib/api.ts       API client
+├── schema.sql           Tables, constraints, triggers, functions and the checkout procedure
+├── docs/                Database design (ERD, keys, normalisation)
+├── tests/               Node test-runner tests
+└── vercel.json          Vercel build and routing configuration
+```
