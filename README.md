@@ -285,3 +285,22 @@ sequenceDiagram
 Shipping is a flat 5 for orders up to 150 and free above that. The browser
 works the fee out and sends it with the order, which the server accepts as long
 as it is not negative (see [Project status](#project-status-and-next-steps)).
+
+## Seller approval
+
+```mermaid
+flowchart TD
+    A([Merchant registers]) --> B[Seller row created<br/>status = pending]
+    B --> C{Admin decision}
+    C -->|Approve| D[approved<br/>can list products]
+    C -->|Reject| E[rejected<br/>product writes blocked]
+    D -->|Suspend| F[suspended<br/>product writes blocked]
+    F -->|Approve again| D
+    D --> G[Products visible in the storefront]
+    B -. every change .-> H[(seller_status_audit)]
+    D -. every change .-> H
+```
+
+A seller who is not `approved` cannot create a product, and the check lives in a
+trigger (`trigger_enforce_seller_status`), so it holds for every caller, not
+only the web app.
