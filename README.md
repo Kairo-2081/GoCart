@@ -120,3 +120,58 @@ Nothing comes from a production account.
 <p><b>On a phone.</b> The same app at a 390-pixel viewport: the portals stack, and the catalogue becomes a single column.</p>
 
 </div>
+
+### Inside each workspace
+
+#### Customer
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/app-customer-storefront.jpg" />
+<img src="./.github/assets/readme/app-customer-storefront-light.jpg" alt="Storefront catalogue with category chips, sorting, a price slider and product cards" width="100%" />
+</picture>
+<p><b>Shop the catalogue.</b> Products from several sellers in one grid, with category chips, sorting, a price cap and a stock filter.</p>
+</td>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/app-customer-product.jpg" />
+<img src="./.github/assets/readme/app-customer-product-light.jpg" alt="Product detail with price, inventory, seller card, quantity picker and an Add to Cart button" width="100%" />
+</picture>
+<p><b>Review the details.</b> Price, stock left, the merchant and their address, and a quantity picker before adding to the cart.</p>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/app-customer-cart.jpg" />
+<img src="./.github/assets/readme/app-customer-cart-light.jpg" alt="Cart drawer listing the item, subtotal, shipping fee and a free-shipping hint" width="100%" />
+</picture>
+<p><b>Check the cart.</b> Subtotal, shipping and a hint on how much more earns free shipping (orders over 150).</p>
+</td>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/app-customer-checkout.jpg" />
+<img src="./.github/assets/readme/app-customer-checkout-light.jpg" alt="Checkout dialog with the shipping address, delivery notes and an order summary" width="100%" />
+</picture>
+<p><b>Check out.</b> Confirm the address, add delivery notes and place the order in one step.</p>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/app-customer-orders.jpg" />
+<img src="./.github/assets/readme/app-customer-orders-light.jpg" alt="Order history with tracking number, a Processing badge, items and the delivery address" width="100%" />
+</picture>
+<p><b>Follow the order.</b> Each order has a tracking ID, a status badge, its items and the delivery address.</p>
+</td>
+<td width="50%" valign="top">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="./.github/assets/readme/app-customer-profile.jpg" />
+<img src="./.github/assets/readme/app-customer-profile-light.jpg" alt="Customer profile form with contact details and the default address" width="100%" />
+</picture>
+<p><b>Keep a profile.</b> Contact details and a default address, saved back to the customer record.</p>
+</td>
+</tr>
+</table>
