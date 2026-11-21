@@ -44,3 +44,15 @@ sellers manage their own catalogue and move orders along; admins approve
 merchants, curate categories and watch the marketplace. The rules that matter
 (stock, seller status, checkout) live in PostgreSQL itself, so the API cannot
 step around them.
+
+## At a glance
+
+| | |
+| --- | --- |
+| **Three roles, one data set** | Customers, sellers and admins each get a workspace on the same tables. |
+| **Where it runs** | A React 19 single-page app and an Express 4 API served from one Node process, in dark and light themes. |
+| **Rules in the database** | 13 tables, 58 SQL functions, 8 triggers and 1 stored procedure keep stock, seller status and order history consistent. |
+| **Trust built in** | Merchants are approved by an admin before they can list; suspended or rejected sellers are blocked by a database trigger. |
+| **Safe checkout** | One transaction locks the cart and the products, checks stock, creates the order, takes the stock and empties the cart. |
+| **Sessions you can revoke** | HttpOnly `SameSite=Strict` JWT cookies, with every token ID stored so logging out invalidates it on the server. |
+| **Verified** | `npm run lint` type-checks the project, `npm run build` bundles it, and `npm test` runs the admin-seeding tests. |
